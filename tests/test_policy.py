@@ -85,3 +85,18 @@ def test_failed_tool_disables_auto_response(tickets):
     result = finalize(t, mock_proposal(kb_article_ids=["KB-004"]), tools, "demo_rules")
     assert result.action == "route_to_specialist"
     assert "tool_failure_prevents_auto_response" in result.policy_overrides
+
+
+@pytest.mark.parametrize("level,expected_action", [
+    ("medium", "route_to_specialist"),
+    ("high", "escalate_to_human"),
+    ("critical", "escalate_to_human"),
+])
+def test_any_non_low_urgency_cannot_auto_respond_even_with_kb(tickets, level, expected_action):
+    t = tickets["TICKET-003"].model_copy(deep=True)
+    t.messages = [Message(when="now", text="Hello, can you review this account issue?")]
+    tools = ToolRegistry(t)
+    tools.call("search_knowledge_base", {"query": "hello general guide"})
+    result = finalize(t, mock_proposal(urgency=level, kb_article_ids=["KB-004"]), tools, "demo_rules")
+    assert result.action == expected_action
+    assert "auto_response_only_allowed_for_low_urgency" in result.policy_overrides
