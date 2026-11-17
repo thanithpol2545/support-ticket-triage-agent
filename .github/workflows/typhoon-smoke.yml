@@ -1,0 +1,38 @@
+# Manual provider smoke test. API key must be stored under GitHub Actions Secrets,
+# not as a workflow input, commit, PR comment, issue, or artifact.
+name: typhoon-real-api-smoke
+on:
+  workflow_dispatch:
+    inputs:
+      include_edge:
+        description: 'Also evaluate the nine synthetic edge cases (extra API calls)'
+        required: false
+        type: boolean
+        default: false
+jobs:
+  typhoon-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TYPHOON_API_KEY: ${{ secrets.TYPHOON_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - name: Verify secret exists (do not print value)
+        shell: bash
+        run: |
+          if [ -z "$TYPHOON_API_KEY" ]; then
+            echo 'TYPHOON_API_KEY repository secret is missing.' >&2
+            exit 1
+          fi
+      - name: Run real provider integration checks
+        shell: bash
+        run: |
+          if [ '${{ inputs.include_edge }}' = 'true' ]; then
+            python scripts/evaluate_typhoon.py --include-edge --limit 12
+          else
+            python scripts/evaluate_typhoon.py --limit 3
+          fi

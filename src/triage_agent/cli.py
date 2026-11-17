@@ -13,7 +13,7 @@ from .models import Ticket
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ooca support ticket triage agent")
-    parser.add_argument("--mode", choices=["demo", "live"], default="demo", help="demo=deterministic, live=actual GPT")
+    parser.add_argument("--mode", choices=["demo", "live", "typhoon"], default="demo", help="demo=deterministic, live=OpenAI GPT (required for submission), typhoon=optional evaluation")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--ticket", help="Sample ticket ID (e.g., TICKET-001)")
     selection.add_argument("--all", action="store_true", help="Process all three supplied samples")
@@ -35,7 +35,11 @@ def main(argv: list[str] | None = None) -> int:
         elif not args.all and not args.ticket_file:
             tickets = tickets[:1]
 
-        agent = GPTTriageAgent() if args.mode == "live" else DemoTriageAgent()
+        if args.mode == "typhoon":
+            from .typhoon import TyphoonTriageAgent
+            agent = TyphoonTriageAgent()
+        else:
+            agent = GPTTriageAgent() if args.mode == "live" else DemoTriageAgent()
         results = []
         for ticket in tickets:
             result = agent.run(ticket).model_dump()

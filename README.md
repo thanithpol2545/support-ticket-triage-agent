@@ -26,6 +26,7 @@ An AI agent that reads an **entire chronological customer-support ticket**, inve
 ## 2. What is implemented (and what is not)
 
 - **Live GPT mode:** uses OpenAI **Responses API**, function calling, structured JSON schema, Pydantic validation and safety policy. It requires `OPENAI_API_KEY` and network access. It has **not been live-verified with a real API key in this environment**.
+- **Typhoon comparison mode:** optional **Chat Completions** function-call adapter for development testing. It does **not** substitute for the assignment-required OpenAI GPT mode. Tests with an injected fake client do **not** prove access to the real Typhoon API.
 - **Demo mode:** fully deterministic, works **offline without an API key**, uses the same read-only local tools and deterministic safety policy. Demo outputs **are not GPT outputs** and are marked `"mode": "demo_rules"`.
 - Four read-only mock tools: customer history, FAQ/KB lookup, billing status and system status. **No real charge/refund/incident** is executed or verified.
 - Supports English and Thai customer messages; simple Thai keyword support in the local KB. GPT handles language understanding in live mode.
@@ -98,6 +99,33 @@ python -m triage_agent --mode live --all
 ```
 
 `OPENAI_MODEL` can be changed to a compatible GPT model accessible to your account. `.env.example` documents the variables; the app reads **environment variables directly** and does not automatically load `.env`.
+
+### Optional Typhoon evaluation (not a replacement for OpenAI GPT)
+
+Typhoon documents its OpenAI-compatible Chat Completions endpoint at `https://api.opentyphoon.ai/v1` and model `typhoon-v2.5-30b-a3b-instruct`. Its request format differs from the OpenAI GPT **Responses API** used for the assignment, so a separate adapter lives in `src/triage_agent/typhoon.py`. Never place a real key in source code, a repository, a GitHub workflow input, an issue, or a test fixture.
+
+**PowerShell** (set key locally, without saving it to the repository):
+
+```powershell
+$env:TYPHOON_API_KEY = Read-Host "Typhoon API key"
+python -m triage_agent --mode typhoon --all --no-trace
+python scripts/evaluate_typhoon.py --include-edge --limit 12
+Remove-Item Env:TYPHOON_API_KEY
+```
+
+**Bash**:
+
+```bash
+read -rs -p "Typhoon API key: " TYPHOON_API_KEY; echo
+export TYPHOON_API_KEY
+python -m triage_agent --mode typhoon --all --no-trace
+python scripts/evaluate_typhoon.py --include-edge --limit 12
+unset TYPHOON_API_KEY
+```
+
+The optional evaluation fixture includes the 3 supplied tickets and 9 synthetic boundary cases. The harness reports predicted labels, decisions, tools and policy overrides **without printing the key**. Synthetic labels are proposed test expectations rather than certified production ground truth. A provider call can fail if the model/account does not support the requested forced tool choice; do not treat that as a successful classification. No live Typhoon request was completed in the review runtime because outbound DNS was unavailable.
+
+**Alternative network-enabled test:** In GitHub, configure **Settings → Secrets and variables → Actions → New repository secret** named `TYPHOON_API_KEY` (use a newly generated key). Then open **Actions → typhoon-real-api-smoke → Run workflow**. The manual workflow uses the repository secret, not a public workflow input, and runs three real-provider sample tickets by default. Do not place credentials into the Run Workflow form.
 
 ### Tests
 
@@ -181,8 +209,10 @@ These labels are **proposed test baselines**, not ground truth provided by Ooca.
 - **Repeated charges:** never assert that money was captured or a refund issued without evidence; escalate to Billing.
 - **Enterprise outage:** escalate a multi-user HTTP 500; a green status page is not proof that the tenant is functioning. The enterprise has **45 seats**, not 45 proven affected people.
 - **Appearance defects:** route to a specialist if System Default does not work; don't invent scheduled dark-mode availability.
-- **Missing/unverified KB:** remove invented article IDs; prohibit automatic answers without grounded documents.
-- **Tool failure:** fail closed rather than invent a success; no auto-response if tool verification fails.
+- **Missing/unverified KB:** remove invented article IDs; prohibit automatic answers without grounded documents. Low-risk auto-response uses a **fixed approved FAQ template** only; arbitrary model text is never auto-replied.
+- **Tool failure:** fail closed rather than invent a success; malformed KB data returns a tool error and prevents auto-response.
+- **Critical:** force human escalation, even if the model suggested only a specialist route.
+- **Language variants/negation:** backstop patterns cover additional Thai/English multi-charge and multi-user outage phrases while avoiding several false positives from explicit negations; this is not a substitute for human-labeled model evaluation.
 - **API failure, malformed JSON, wrong customer ID, max tool rounds:** return a visible error and stop instead of silently fabricating a triage result.
 - **Untrusted content:** customer messages and KB passages are data; the system prompt forbids obeying instructions embedded in them. This is a prompt-layer mitigation, not a guarantee against every injection.
 - **Privacy:** sample data is hypothetical. In production, redact PII in logs and implement authorization, retention and access controls before connecting real account records.
@@ -200,7 +230,10 @@ src/triage_agent/
   prompts/system.md        # AI system prompt
   data/                    # original 3 ticket threads + mock data
 
-tests/                     # model, tool, policy, agent, CLI tests
+tests/                     # model, tool, policy, agent, CLI, adversarial, Typhoon fake-client tests
+src/triage_agent/typhoon.py # optional Typhoon evaluation adapter
+evaluation/                # proposed synthetic edge-case dataset
+scripts/evaluate_typhoon.py # manual real-provider test runner
 docs/architecture.md       # assignment-required one-page write-up
 docs/qa-review.md          # reviewer-style design risks and acceptance gates
 .github/workflows/tests.yml
@@ -222,7 +255,9 @@ See `docs/architecture.md` for the **one-page submission write-up**. In a real r
 - [x] Version-controlled system prompt and function tool schemas
 - [x] CLI, Pydantic validation, deterministic safeguards and offline tests
 - [x] One-page architecture / risks / production evaluation write-up
+- [x] Regression tests for safety policy and optional Typhoon client adapter (offline fake client)
 - [ ] **Live API smoke test with an authorized `OPENAI_API_KEY`**
+- [ ] **Real Typhoon provider smoke test** (optional; requires network and user-managed key)
 - [ ] Confirm reviewer access to private GitHub repository
 
 ---

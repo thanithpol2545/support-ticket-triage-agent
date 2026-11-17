@@ -116,8 +116,8 @@ class ToolRegistry:
                 else:
                     result = {"region": region, "status": self.status[region], "source": "mock_status"}
             ok = True
-        except (ValidationError, ValueError, TypeError) as exc:
-            result = {"error": str(exc), "source": "tool_error"}
+        except (ValidationError, ValueError, TypeError, KeyError, IndexError) as exc:
+            result = {"error": "Invalid tool input or mock data" if isinstance(exc, (KeyError, IndexError)) else str(exc), "source": "tool_error"}
             ok = False
         self.trace.append(ToolTrace(name=name, arguments=arguments, result=result, ok=ok))
         return result
