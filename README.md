@@ -107,7 +107,9 @@ Typhoon documents its OpenAI-compatible Chat Completions endpoint at `https://ap
 **PowerShell** (set key locally, without saving it to the repository):
 
 ```powershell
-$env:TYPHOON_API_KEY = Read-Host "Typhoon API key"
+$secureKey = Read-Host "Typhoon API key" -AsSecureString
+$env:TYPHOON_API_KEY = [System.Net.NetworkCredential]::new("", $secureKey).Password
+Remove-Variable secureKey
 python -m triage_agent --mode typhoon --all --no-trace
 python scripts/evaluate_typhoon.py --include-edge --limit 12
 Remove-Item Env:TYPHOON_API_KEY
