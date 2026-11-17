@@ -70,6 +70,18 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry, mode:
         data["draft_response"] = "Thanks for reporting this. Since System Default isn't following your Mac's appearance setting, our product support team can investigate. We also noted your scheduled dark-mode suggestion; its availability isn't confirmed in the documentation."
         data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"], "Dark-mode schedule availability unverified"]))
 
+    # Auto-response is intentionally reserved for low-urgency, grounded FAQ cases.
+    # A model's inconsistent {critical/high/medium, auto_respond} proposal must not pass through.
+    if data["action"] == "auto_respond" and data["urgency"] != "low":
+        changes.append("auto_response_only_allowed_for_low_urgency")
+        if data["urgency"] in {"critical", "high"}:
+            data["action"] = "escalate_to_human"
+            data["assigned_team"] = "Support Escalation"
+        else:
+            data["action"] = "route_to_specialist"
+            data["assigned_team"] = "General Support"
+        data["draft_response"] = "Thank you for reporting this. A support specialist will review your issue; we cannot yet confirm a resolution."
+
     if data["action"] == "auto_respond" and not data["kb_article_ids"]:
         changes.append("no_grounded_kb_prevents_auto_response")
         data["action"] = "route_to_specialist"
