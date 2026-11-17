@@ -1,0 +1,3 @@
+{
+  "cust-free-001": {"plan":"Free", "upgrade_attempted":true, "transaction_review_status":"requires_billing_investigation", "captured_charges_verified":null, "refund_confirmed":false, "notes":"Mock account record. Customer's bank-reported three charges are not verified by this record."}
+}

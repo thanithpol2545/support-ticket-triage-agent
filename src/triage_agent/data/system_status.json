@@ -1,0 +1,4 @@
+{
+  "Asia": {"public_status":"operational", "regional_diagnostics":"unavailable", "incident_confirmed":null, "notes":"Mock status feed: public green status does not rule out tenant-specific incident."},
+  "Global": {"public_status":"operational", "regional_diagnostics":"unavailable", "incident_confirmed":null, "notes":"Mock status feed."}
+}

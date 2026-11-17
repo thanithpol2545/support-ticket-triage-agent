@@ -1,0 +1,99 @@
+[
+  {
+    "ticket_id": "TICKET-001",
+    "urgency": "high",
+    "product": "Pro upgrade",
+    "issue_types": [
+      "failed_upgrade",
+      "repeated_charges_reported"
+    ],
+    "sentiment": "angry",
+    "action": "escalate_to_human",
+    "assigned_team": "Billing Support",
+    "summary": "Customer reports repeated charges and no access to Pro after upgrade attempts.",
+    "reasons": [
+      "Multiple charges reported",
+      "Time-sensitive Pro access"
+    ],
+    "kb_article_ids": [
+      "KB-001"
+    ],
+    "draft_response": "I'm sorry about the repeated charges you reported and the missing Pro access. I'm escalating this to our billing specialists for urgent investigation. We cannot yet confirm whether the bank entries are settled or reversed; the team will review your account and transactions.",
+    "uncertainties": [
+      "Bank-side settlement unverified",
+      "Bank charges and refunds not verified"
+    ],
+    "policy_overrides": [],
+    "tools_used": [
+      "get_customer_history",
+      "search_knowledge_base",
+      "check_billing_status"
+    ],
+    "mode": "demo_rules"
+  },
+  {
+    "ticket_id": "TICKET-002",
+    "urgency": "critical",
+    "product": "Enterprise platform",
+    "issue_types": [
+      "http_500",
+      "access_failure"
+    ],
+    "sentiment": "frustrated",
+    "action": "escalate_to_human",
+    "assigned_team": "Infrastructure / On-call",
+    "summary": "Thai enterprise customer reports multi-user access failure and a high-stakes demo.",
+    "reasons": [
+      "HTTP 500",
+      "Multiple coworkers affected",
+      "Potential business impact"
+    ],
+    "kb_article_ids": [
+      "KB-002"
+    ],
+    "draft_response": "รับทราบปัญหาเข้าใช้งานไม่ได้และ HTTP 500 ที่หลายท่านพบครับ เราจะส่งต่อทีมเทคนิคเพื่อตรวจสอบโดยเร่งด่วน ขณะนี้ยังไม่สามารถยืนยันสาเหตุหรือสถานะของ region Asia ได้ครับ",
+    "uncertainties": [
+      "Regional scope unconfirmed",
+      "Regional incident not confirmed",
+      "Exact affected user count not verified"
+    ],
+    "policy_overrides": [],
+    "tools_used": [
+      "get_customer_history",
+      "search_knowledge_base",
+      "check_system_status"
+    ],
+    "mode": "demo_rules"
+  },
+  {
+    "ticket_id": "TICKET-003",
+    "urgency": "medium",
+    "product": "Pro application",
+    "issue_types": [
+      "appearance_bug",
+      "feature_request"
+    ],
+    "sentiment": "concerned",
+    "action": "route_to_specialist",
+    "assigned_team": "Product Support",
+    "summary": "System Default is not following device dark appearance; customer also suggests scheduling.",
+    "reasons": [
+      "Reproducible appearance problem",
+      "Separate feature request"
+    ],
+    "kb_article_ids": [
+      "KB-003"
+    ],
+    "draft_response": "Thanks for reporting this. Since System Default isn't following your Mac's appearance setting, our product support team can investigate. We also noted your scheduled dark-mode suggestion; its availability isn't confirmed in the documentation.",
+    "uncertainties": [
+      "Scheduled mode not verified",
+      "Dark-mode schedule availability unverified"
+    ],
+    "policy_overrides": [],
+    "tools_used": [
+      "get_customer_history",
+      "search_knowledge_base"
+    ],
+    "mode": "demo_rules"
+  }
+]
