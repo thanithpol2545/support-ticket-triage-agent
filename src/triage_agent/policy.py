@@ -81,9 +81,12 @@ _AFFECTED_GROUP = _MULTI_USER + _GROUP_REPORT_WORDS + r"\baffected\s*$"
 _DARK_DEFECT = re.compile(r"still\s+(?:shows?\s+)?light|not\s+working|doesn't\s+work|bug|ไม่ทำงาน", re.IGNORECASE)
 _APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light theme|appearance)\b|(?:โหมดมืด|ธีมมืด)"
 _CLAUSE_BREAK = re.compile(r"[.!?;\n,]|\b(?:but|however|yet)\b|แต่", re.IGNORECASE)
+# In Thai access predicates such as เข้าไม่ได้, the failure is already reported.
+# The suffix does not negate a separate symptom that follows it.
 _NEGATION = re.compile(
     r"(?:\b(?:no|none|not|never|without|did\s+not|didn't|is\s+not|isn't|was\s+not|wasn't|"
-    r"have\s+not|haven't|aren't|there\s+is\s+no)\b|(?:ไม่ได้|ไม่พบ|ไม่มี|ไม่ใช่))"
+    r"have\s+not|haven't|aren't|there\s+is\s+no)\b|"
+    r"(?:(?<!เข้า)(?<!เข้าระบบ)(?<!ใช้งาน)ไม่ได้|ไม่พบ|ไม่มี|ไม่ใช่))"
     r"(?:[\w\sก-๙'-]{0,24})$",
     re.IGNORECASE,
 )
@@ -286,19 +289,19 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry, mode:
                 "Thanks for contacting support. We're routing your question for "
                 "review because there is no approved automatic answer."
             )
+        elif any(not event.ok for event in tools.trace):
+            changes.append("tool_failure_prevents_auto_response")
+            data["action"] = "route_to_specialist"
+            data["assigned_team"] = "General Support"
+            data["draft_response"] = (
+                "We're checking this with our support team because a required "
+                "verification wasn't available."
+            )
         else:
-            # Do not trust model draft or the retrieved excerpt as instructions.
+            # Cite the approved source used for this template.
             data["draft_response"] = SAFE_FAQ_REPLIES[safe_article]
+            data["kb_article_ids"] = [safe_article]
             changes.append("auto_response_replaced_with_approved_faq_template")
-
-    if data["action"] == "auto_respond" and any(not event.ok for event in tools.trace):
-        changes.append("tool_failure_prevents_auto_response")
-        data["action"] = "route_to_specialist"
-        data["assigned_team"] = "General Support"
-        data["draft_response"] = (
-            "We're checking this with our support team because a required "
-            "verification wasn't available."
-        )
 
     if data["action"] != "auto_respond" and not data["assigned_team"]:
         changes.append("assigned_fallback_team")

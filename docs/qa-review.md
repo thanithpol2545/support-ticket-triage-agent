@@ -1,5 +1,59 @@
 # Engineering verification for the Ooca assignment
 
+## OpenAI CLI follow-up · 2026-11-19
+
+PR [#2](https://github.com/thanithpol2545/support-ticket-triage-agent/pull/2) was open as a draft. Its head and the clean local checkout matched `8fd0544c339d805661ab5b16d81212f2554b4ac4`. The remote default branch was `main` at `9e7e62eaa53effd03feca251719ceb7ba4d8f9d6`. On Windows Python 3.11.16 the starting suite passed 117 tests with 93% statement coverage. [Starting commit CI](https://github.com/thanithpol2545/support-ticket-triage-agent/actions/runs/44348889265)
+
+### Live status
+
+**OpenAI live is BLOCKED by missing credentials.** The environment had no `OPENAI_API_KEY` and no `OPENAI_MODEL` override, so the configured default was `gpt-4.1-mini`. The exact reviewer command exited `2` with the missing-key diagnostic and produced zero ticket records. The CLI stopped before client creation. Authenticated model access, provider tool calls, and live schema and policy outcomes are unverified. **Typhoon is NOT VERIFIED.** No authorized rotated key was available in the environment.
+
+### Acceptance on the demo CLI
+
+These expected urgency and action labels are project acceptance criteria. Actual values below come from the corrected deterministic demo. Live actuals for all three tickets are unavailable.
+
+| Ticket | Expected urgency / action | Demo actual | Demo extraction and KB |
+| --- | --- | --- | --- |
+| TICKET-001 | `high / escalate_to_human` | `high / escalate_to_human` | Pro upgrade · `failed_upgrade`, `repeated_charges_reported` · `angry` · `KB-001` |
+| TICKET-002 | `critical / escalate_to_human` | `critical / escalate_to_human` | Enterprise platform · `http_500`, `access_failure` · `frustrated` · `KB-002` |
+| TICKET-003 | `medium / route_to_specialist` | `medium / route_to_specialist` | Pro application · `appearance_bug`, `feature_request` · `concerned` · `KB-003` |
+
+The draft and reasoning for TICKET-001 left refund and upgrade success unconfirmed. TICKET-002 left regional scope and the affected user count unconfirmed. TICKET-003 separated the defect from the scheduling request and left scheduling availability unconfirmed. Internal trace checks confirmed both `get_customer_history` and `search_knowledge_base` succeeded on every ticket. Each citation appeared in the corresponding KB result. TICKET-001 also succeeded on `check_billing_status`, and TICKET-002 on `check_system_status`. All three original tickets recorded zero policy override codes. Full tool payloads were inspected in memory only.
+
+| Requirement | Evidence from this round |
+| --- | --- |
+| R1 · Urgency | The three original urgency targets passed in demo. Both targeted low-urgency edge fixtures also passed. |
+| R2 · Extraction | Verified product, issue types and sentiment on all three original demo results. Added a regression for the missing `http_500` issue in TICKET-002. |
+| R3 · KB relevance | Verified grounded `KB-001`, `KB-002` and `KB-003` for the originals. In `auto_respond`, EDGE-006 cites `KB-004` and EDGE-009 cites `KB-003`. |
+| R4 · Action and safety | Verified escalation and routing on the originals and `low / auto_respond` on EDGE-006 and EDGE-009. Reviewed the three draft safety expectations. |
+| R5 · At least two tool types | Both mandatory tool types succeeded in all 12 demo cases. Offline GPT tests verified that simulated `function_call` items trigger registry execution and that matching `function_call_output` items are serialized into the next Responses API request. |
+
+### Reproduced defects and tests
+
+- Thai access failures could suppress a separate HTTP 500 mention. The original CLI case and three affirmative variants reproduced this. The fix preserves the report while continuing to respect an explicit denial of HTTP 500. [Policy](../src/triage_agent/policy.py#L83) · [CLI and regression tests](../tests/test_e2e_regression.py)
+- The auto-response output cited retrieved articles outside the selected approved template. EDGE-006 and EDGE-009 reproduced this. Successful automatic drafts now cite the template's article. The tool trace retains the retrieval evidence. [Policy](../src/triage_agent/policy.py#L282) · [Citation regression](../tests/test_e2e_regression.py#L37)
+- Post-fix Windows Python 3.11.16 checks passed **123 pytest cases with 93% statement coverage** and **12 of 12 demo CLI input checks**. The focused `tests/test_agent.py` run passed **12 cases** using fake clients or the SDK with an in-process mock transport. It exercised tool dispatch and output round-tripping, schema and policy enforcement, and error handling. [GPT tests](../tests/test_agent.py) · [Draft PR checks](https://github.com/thanithpol2545/support-ticket-triage-agent/pull/2/checks)
+
+### Re-run from an authorized PowerShell environment
+
+Load `OPENAI_API_KEY` into the local environment using the masked entry in the [README](../README.md#live-gpt-mode). Keep `OPENAI_MODEL` set to the authorized project configuration or use its default. The following runs the same reviewer entry point and displays only the permitted evidence fields.
+
+```powershell
+$model = if ($env:OPENAI_MODEL) { $env:OPENAI_MODEL } else { 'gpt-4.1-mini' }
+$lines = python -m triage_agent --mode live --all --no-trace
+if ($LASTEXITCODE -ne 0) { throw "Live CLI exit code $LASTEXITCODE" }
+$results = ($lines -join "`n") | ConvertFrom-Json
+$results |
+    Select-Object ticket_id, @{Name='model'; Expression={ $model }}, tools_used, urgency, action, policy_overrides |
+    ConvertTo-Json -Depth 4
+```
+
+Review extraction, KB relevance and draft safety locally. Confirm that each ticket reports both mandatory tools as successful and that its final action matches the expected row. After the originals pass, exercise the existing `EDGE-006` and `EDGE-009` fixtures through the live CLI with `--ticket-file`. Keep tool arguments, tool results and customer content outside the evidence report.
+
+**NO-GO for submission under the current verification gate.** The authenticated OpenAI CLI acceptance run is outstanding. Separately, the repository is private and access for the Ooca reviewers remains unconfirmed.
+
+## Prior engineering review
+
 The review began from a clean `main` at `9e7e62eaa53effd03feca251719ceb7ba4d8f9d6`, verified against the private remote. The baseline passed 71 tests with 92% statement coverage on Windows Python 3.11.16. The original Word assignment was available locally. Independent QA confirmed that all 12 message texts and timestamps match the three supplied tickets and that their customer context was preserved. [Baseline Actions run](https://github.com/thanithpol2545/support-ticket-triage-agent/actions/runs/44243542984)
 
 ## A. Agent execution

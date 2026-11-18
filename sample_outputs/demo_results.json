@@ -103,6 +103,7 @@
     "urgency": "critical",
     "product": "Enterprise platform",
     "issue_types": [
+      "http_500",
       "access_failure"
     ],
     "sentiment": "frustrated",

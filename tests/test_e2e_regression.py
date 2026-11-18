@@ -34,6 +34,15 @@ def test_all_edge_fixtures_through_actual_cli(case, tmp_path, capsys):
     assert {'get_customer_history', 'search_knowledge_base'} <= set(result['tools_used'])
 
 
+@pytest.mark.parametrize('case_id,used_article', [('EDGE-006', 'KB-004'), ('EDGE-009', 'KB-003')])
+def test_auto_response_only_cites_its_approved_article(case_id, used_article):
+    case = next(candidate for candidate in CASES if candidate['id'] == case_id)
+    result = DemoTriageAgent().run(edge_ticket(case_id, case['text']))
+
+    assert (result.urgency, result.action) == ('low', 'auto_respond')
+    assert result.kb_article_ids == [used_article]
+
+
 @pytest.mark.parametrize('language,text', [
     ('thai-billing', 'ไม่มีการหักเงินซ้ำครับ ช่วยส่งคู่มือให้ด้วย'),
     ('thai-outage', 'ไม่ได้ขึ้น error 500 เพื่อนร่วมงานทุกคนเข้าใช้งานได้'),
@@ -85,6 +94,23 @@ def test_individual_failure_is_routed_not_auto_closed(text, team):
     assert result.urgency == 'medium'
     assert result.action == 'route_to_specialist'
     assert result.assigned_team == team
+
+
+@pytest.mark.parametrize('message,http_500_reported', [
+    ('ระบบเข้าไม่ได้ครับ ขึ้น error 500', True),
+    ('เข้าระบบไม่ได้ครับ ขึ้น error 500', True),
+    ('ใช้งานไม่ได้ครับ ขึ้น error 500', True),
+    ('ระบบเข้าไม่ได้ครับ ไม่ได้ขึ้น error 500', False),
+], ids=['access', 'system-access', 'usage', 'explicitly-negated-500'])
+def test_thai_access_failure_preserves_separate_http_500_evidence(message, http_500_reported):
+    ticket = edge_ticket('thai-http-500', message)
+    ticket.messages.append(Message(when='later', text='เพื่อนร่วมงานก็เข้าไม่ได้เหมือนกัน'))
+
+    result = DemoTriageAgent().run(ticket)
+
+    assert result.urgency == 'critical'
+    assert 'access_failure' in result.issue_types
+    assert ('http_500' in result.issue_types) == http_500_reported
 
 
 @pytest.mark.parametrize('messages,urgency,action,team', [

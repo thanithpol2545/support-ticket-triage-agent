@@ -17,6 +17,8 @@ def test_cli_all_demo_and_four_required_fields(capsys):
         assert r["product"] and r["issue_types"] and r["sentiment"]
         assert len(r["tools_used"]) >= 2
         assert r["mode"] == "demo_rules"
+    outage = next(result for result in results if result["ticket_id"] == "TICKET-002")
+    assert set(outage["issue_types"]) == {"access_failure", "http_500"}
 
 
 def test_cli_output_file(tmp_path, capsys):

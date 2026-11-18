@@ -85,6 +85,7 @@ def test_failed_tool_disables_auto_response(tickets):
     result = finalize(t, mock_proposal(kb_article_ids=["KB-004"]), tools, "demo_rules")
     assert result.action == "route_to_specialist"
     assert "tool_failure_prevents_auto_response" in result.policy_overrides
+    assert "auto_response_replaced_with_approved_faq_template" not in result.policy_overrides
     assert result.tools_used == ["search_knowledge_base"]
     assert not result.tool_trace[-1].ok
 
