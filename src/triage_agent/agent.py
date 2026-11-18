@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .models import AgentProposal, PROPOSAL_JSON_SCHEMA, Ticket, TriageResult
-from .policy import finalize
+from .policy import finalize, risk_signals, _access_problem, _payment_failure
 from .tools import TOOL_SCHEMAS, ToolRegistry, load_data
 
 
@@ -65,7 +65,10 @@ class GPTTriageAgent:
                     store=False,
                 )
             except Exception as exc:
-                raise AgentExecutionError(f"OpenAI response failed: {type(exc).__name__}: {exc}") from exc
+                raise AgentExecutionError(
+                    f"OpenAI response failed ({type(exc).__name__}). "
+                    "Check connectivity, credentials, and model availability."
+                ) from None
 
             output = list(getattr(response, "output", []) or [])
             calls = [item for item in output if getattr(item, "type", "") == "function_call"]
@@ -107,28 +110,36 @@ class DemoTriageAgent:
         tools.call("get_customer_history", {"customer_id": ticket.customer.customer_id})
         search = " ".join(x.text for x in ticket.messages)
         tools.call("search_knowledge_base", {"query": search[:2000]})
-        text = search.lower()
+        outage, billing, dark_bug = risk_signals(ticket)
         refs = sorted(tools.valid_article_ids())
-        if "payment" in text or "charge" in text:
+        if billing:
             tools.call("check_billing_status", {"customer_id": ticket.customer.customer_id})
             proposal = AgentProposal(urgency="high", product="Pro upgrade", issue_types=["failed_upgrade", "repeated_charges_reported"],
                 sentiment="angry", action="escalate_to_human", assigned_team="Billing Support",
                 summary="Customer reports repeated charges and no access to Pro after upgrade attempts.",
                 reasons=["Multiple charges reported", "Time-sensitive Pro access"], kb_article_ids=[r for r in refs if r == "KB-001"],
                 draft_response="We are escalating your billing issue for review.", uncertainties=["Bank-side settlement unverified"])
-        elif "500" in text or "เข้าไม่ได้" in text:
-            tools.call("check_system_status", {"region": "Asia"})
+        elif outage:
+            tools.call("check_system_status", {"region": ticket.customer.region or "Asia"})
             proposal = AgentProposal(urgency="critical", product="Enterprise platform", issue_types=["http_500", "access_failure"],
                 sentiment="frustrated", action="escalate_to_human", assigned_team="Infrastructure / On-call",
                 summary="Thai enterprise customer reports multi-user access failure and a high-stakes demo.",
                 reasons=["HTTP 500", "Multiple coworkers affected", "Potential business impact"], kb_article_ids=[r for r in refs if r == "KB-002"],
                 draft_response="We are escalating the reported service failure for investigation.", uncertainties=["Regional scope unconfirmed"])
-        elif "dark mode" in text:
+        elif dark_bug:
             proposal = AgentProposal(urgency="medium", product="Pro application", issue_types=["appearance_bug", "feature_request"],
                 sentiment="concerned", action="route_to_specialist", assigned_team="Product Support",
                 summary="System Default is not following device dark appearance; customer also suggests scheduling.",
                 reasons=["Reproducible appearance problem", "Separate feature request"], kb_article_ids=[r for r in refs if r == "KB-003"],
                 draft_response="We will ask Product Support to investigate the appearance setting.", uncertainties=["Scheduled mode not verified"])
+        elif _access_problem(ticket) or _payment_failure(ticket):
+            access = _access_problem(ticket)
+            proposal = AgentProposal(urgency="medium", product="Application", issue_types=["access_failure" if access else "failed_payment"],
+                sentiment="concerned", action="route_to_specialist", assigned_team="Technical Support" if access else "Billing Support",
+                summary="Customer reports an access problem or an unsuccessful transaction.",
+                reasons=["Diagnostic review is required"], kb_article_ids=refs,
+                draft_response="A specialist will investigate; the cause is not yet known.",
+                uncertainties=["Underlying failure unverified"])
         else:
             proposal = AgentProposal(urgency="low", product="General application", issue_types=["general_question"],
                 sentiment="neutral", action="auto_respond", assigned_team=None,

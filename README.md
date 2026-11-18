@@ -135,7 +135,9 @@ The optional evaluation fixture includes the 3 supplied tickets and 9 synthetic 
 python -m pytest -q
 ```
 
-The test suite uses a **Fake OpenAI Responses client** to check the actual function-calling orchestration without consuming tokens or requiring a credential. This is distinct from a live API integration test.
+The test suite uses **fake OpenAI/Typhoon clients** to validate function-call orchestration without credentials. `tests/test_e2e_regression.py` exercises all 9 synthetic edge cases through the actual CLI, plus Thai/English negations, true incidents, single-user failures and input errors. This is **not** a live API integration test.
+
+Latest local verification (Python 3.13.5, 2026-11-18): **71 tests passed, 92% statement coverage**; the three supplied tickets and all 9 synthetic cases passed the offline/demo acceptance checks (**12/12**). These are engineering test fixtures, not a statistically representative model accuracy evaluation. Run `python -m pytest -q` to reproduce the test count on your machine; coverage requires the optional local `pytest-cov` package.
 
 ### Custom ticket input
 
@@ -144,7 +146,7 @@ python -m triage_agent --mode demo --ticket-file my_ticket.json
 python -m triage_agent --mode live --ticket-file my_ticket.json
 ```
 
-`my_ticket.json` is a single `Ticket` object or an array of `Ticket` objects (see `src/triage_agent/data/tickets.json`). CLI errors return a non-zero exit code rather than generating an unsafe answer.
+`my_ticket.json` is a single `Ticket` object or a non-empty array of `Ticket` objects (see `src/triage_agent/data/tickets.json`). Empty arrays, malformed tickets and unknown ticket IDs return a non-zero exit code rather than generating a misleading successful result.
 
 ## 4. Architecture
 
@@ -214,7 +216,8 @@ These labels are **proposed test baselines**, not ground truth provided by Ooca.
 - **Missing/unverified KB:** remove invented article IDs; prohibit automatic answers without grounded documents. Low-risk auto-response uses a **fixed approved FAQ template** only; arbitrary model text is never auto-replied.
 - **Tool failure:** fail closed rather than invent a success; malformed KB data returns a tool error and prevents auto-response.
 - **Critical:** force human escalation, even if the model suggested only a specialist route.
-- **Language variants/negation:** backstop patterns cover additional Thai/English multi-charge and multi-user outage phrases while avoiding several false positives from explicit negations; this is not a substitute for human-labeled model evaluation.
+- **Language variants/negation:** demo and policy share incident detection, including Thai Unicode negations. This protects against simple false positives (e.g., "no duplicate charges", "no HTTP 500") without suppressing confirmed incidents in later clauses. Pattern matching still cannot fully understand natural-language nuance.
+- **Single-user failures:** a first failed upgrade or access issue is at least `medium` and routed to a specialist; widespread outages remain `critical`.
 - **API failure, malformed JSON, wrong customer ID, max tool rounds:** return a visible error and stop instead of silently fabricating a triage result.
 - **Untrusted content:** customer messages and KB passages are data; the system prompt forbids obeying instructions embedded in them. This is a prompt-layer mitigation, not a guarantee against every injection.
 - **Privacy:** sample data is hypothetical. In production, redact PII in logs and implement authorization, retention and access controls before connecting real account records.
@@ -232,7 +235,7 @@ src/triage_agent/
   prompts/system.md        # AI system prompt
   data/                    # original 3 ticket threads + mock data
 
-tests/                     # model, tool, policy, agent, CLI, adversarial, Typhoon fake-client tests
+tests/                     # model, tool, policy, agent, CLI, E2E regression, adversarial, Typhoon fake-client tests
 src/triage_agent/typhoon.py # optional Typhoon evaluation adapter
 evaluation/                # proposed synthetic edge-case dataset
 scripts/evaluate_typhoon.py # manual real-provider test runner
@@ -257,7 +260,7 @@ See `docs/architecture.md` for the **one-page submission write-up**. In a real r
 - [x] Version-controlled system prompt and function tool schemas
 - [x] CLI, Pydantic validation, deterministic safeguards and offline tests
 - [x] One-page architecture / risks / production evaluation write-up
-- [x] Regression tests for safety policy and optional Typhoon client adapter (offline fake client)
+- [x] Full-path regression tests for original tickets, 9 additional synthetic cases, Thai/English negation, empty inputs and safe provider errors
 - [ ] **Live API smoke test with an authorized `OPENAI_API_KEY`**
 - [ ] **Real Typhoon provider smoke test** (optional; requires network and user-managed key)
 - [ ] Confirm reviewer access to private GitHub repository

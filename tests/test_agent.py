@@ -86,3 +86,15 @@ def test_api_failure_is_reported_without_unsafe_fallback(tickets):
     client = FakeClient([])
     with pytest.raises(AgentExecutionError, match="OpenAI response failed"):
         GPTTriageAgent(client=client).run(tickets["TICKET-001"])
+
+
+def test_provider_error_does_not_leak_secret_or_request_content(tickets):
+    class FailingAPI:
+        def create(self, **kwargs):
+            raise RuntimeError('provider metadata token=SENSITIVE-EXAMPLE-CANARY')
+    class Client:
+        responses = FailingAPI()
+    with pytest.raises(AgentExecutionError) as exc:
+        GPTTriageAgent(client=Client()).run(tickets['TICKET-001'])
+    assert 'SENSITIVE-EXAMPLE-CANARY' not in str(exc.value)
+    assert 'RuntimeError' in str(exc.value)
