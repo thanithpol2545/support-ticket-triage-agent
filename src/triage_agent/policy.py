@@ -54,7 +54,7 @@ _DARK_DEFECT = re.compile(r"still\s+(?:shows?\s+)?light|not\s+working|doesn't\s+
 _NEGATION = re.compile(
     r"(?:\b(?:no|not|never|without|did\s+not|didn't|is\s+not|isn't|was\s+not|wasn't|"
     r"have\s+not|haven't|aren't|there\s+is\s+no)\b|(?:ไม่ได้|ไม่พบ|ไม่มี|ไม่ใช่))"
-    r"(?:[\w\s'-]{0,24})$",
+    r"(?:[\w\sก-๙'-]{0,24})$",
     re.IGNORECASE,
 )
 
@@ -73,14 +73,32 @@ def _affirmed_pattern(message: str, pattern: str) -> bool:
     return False
 
 
+_PAYMENT_FAILURE_PATTERNS = (
+    r"\b(?:payment\s+failed|failed\s+payment|upgrade\s+failed|failed\s+to\s+(?:pay|upgrade)|card\s+(?:was\s+)?declined)\b",
+    r"(?:ชำระเงิน|จ่ายเงิน|อัปเกรด)(?:ไม่สำเร็จ|ไม่ได้)",
+)
+
+
+def _access_problem(ticket: Ticket) -> bool:
+    """Affirmed service-access symptoms, even when only one user is affected."""
+    return any(_affirmed_pattern(message.text.lower(), pattern)
+               for message in ticket.messages for pattern in _OUTAGE_PATTERNS)
+
+
+def _payment_failure(ticket: Ticket) -> bool:
+    """An initial unsuccessful upgrade deserves specialist review, not a FAQ closure."""
+    return any(_affirmed_pattern(message.text.lower(), pattern)
+               for message in ticket.messages for pattern in _PAYMENT_FAILURE_PATTERNS)
+
+
 def _floor_urgency(value: str, minimum: str) -> str:
     return value if RANK[value] >= RANK[minimum] else minimum
 
 
-def _signals(ticket: Ticket) -> tuple[bool, bool, bool]:
+def risk_signals(ticket: Ticket) -> tuple[bool, bool, bool]:
     messages = [m.text.lower() for m in ticket.messages]
     billing = any(_affirmed_pattern(m, p) for m in messages for p in _BILLING_PATTERNS)
-    outage_symptom = any(_affirmed_pattern(m, p) for m in messages for p in _OUTAGE_PATTERNS)
+    outage_symptom = _access_problem(ticket)
     multiple_affected = any(_MULTI_USER.search(m) for m in messages)
     # Multi-user confirmed symptom is the trigger; a green status page is not a veto.
     outage = outage_symptom and multiple_affected
@@ -99,7 +117,7 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry, mode:
         changes.append("unverified_kb_article_ids_removed")
         data["kb_article_ids"] = grounded
 
-    outage, billing, dark_bug = _signals(ticket)
+    outage, billing, dark_bug = risk_signals(ticket)
     if outage:
         if data["urgency"] != "critical":
             changes.append("multi_user_outage_min_critical")
@@ -148,6 +166,24 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry, mode:
         )
         data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
             "Scheduled dark-mode support is unverified"]))
+
+    # A single-user access failure or first failed upgrade is not necessarily an
+    # incident, but it is a defect requiring diagnosis rather than auto-closure.
+    if not outage and not billing and not dark_bug and (_access_problem(ticket) or _payment_failure(ticket)):
+        category = "access" if _access_problem(ticket) else "payment"
+        old = data["urgency"]
+        data["urgency"] = _floor_urgency(old, "medium")
+        if old != data["urgency"]:
+            changes.append(f"reported_{category}_failure_min_medium")
+        if data["action"] == "auto_respond":
+            changes.append("diagnostic_issue_requires_specialist")
+            data["action"] = "route_to_specialist"
+        if data["action"] == "route_to_specialist":
+            data["assigned_team"] = "Billing Support" if category == "payment" else "Technical Support"
+        data["draft_response"] = (
+            "Thank you for reporting this issue. A support specialist will review the "
+            "failure; its cause and resolution have not been confirmed."
+        )
 
     # CRITICAL is always a human escalation, including when the model proposes
     # route_to_specialist rather than auto_respond.

@@ -28,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
             tickets = [Ticket.model_validate(x) for x in (raw if isinstance(raw, list) else [raw])]
         else:
             tickets = load_tickets()
+        if not tickets:
+            raise ValueError("No tickets to process")
         if args.ticket:
             tickets = [t for t in tickets if t.ticket_id == args.ticket]
             if not tickets:
