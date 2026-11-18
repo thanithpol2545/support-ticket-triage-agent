@@ -85,3 +85,68 @@ def test_individual_failure_is_routed_not_auto_closed(text, team):
     assert result.urgency == 'medium'
     assert result.action == 'route_to_specialist'
     assert result.assigned_team == team
+
+
+@pytest.mark.parametrize('messages,urgency,action,team', [
+    (['No problem but I was charged twice. Need help.'], 'high', 'escalate_to_human', 'Billing Support'),
+    (['No issue before but now HTTP 500 for all employees.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['ก่อนหน้านี้ไม่มี error แต่ตอนนี้ทุกคนเข้าใช้งานไม่ได้'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['Everyone else can log in and I get HTTP 500.'], 'medium', 'route_to_specialist', 'Technical Support'),
+    (['Everyone else can log in.', 'I get HTTP 500.'], 'medium', 'route_to_specialist', 'Technical Support'),
+    (['I get HTTP 500.', 'Coworkers are not getting the same error.'], 'medium', 'route_to_specialist', 'Technical Support'),
+    (['I get HTTP 500.', 'My coworkers are getting the same error.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['I get HTTP 500. My coworkers got the same error.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['I get HTTP 500.', 'Same error for my coworkers.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['My account got HTTP 500. None of our coworkers have HTTP 500.'], 'medium', 'route_to_specialist', 'Technical Support'),
+    (['The system is down and everyone at the office is affected.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['The service is down company-wide.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['All employees in Asia cannot access production.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['All employees in Asia can log in and I get HTTP 500.'], 'medium', 'route_to_specialist', 'Technical Support'),
+    (['No one can log in.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['Nobody in the London office can log in.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['None of my colleagues can log in.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['All employees in Asia are not seeing HTTP 500. I am the only one who cannot log in.'], 'medium', 'route_to_specialist', 'Technical Support'),
+    (['Everyone at our office is not seeing HTTP 500. I am the only person affected.'], 'low', 'route_to_specialist', 'General Support'),
+    (['All employees in our London office are seeing HTTP 500.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['All users and employees cannot sign in.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
+    (['Billing denied my refund.', 'I dispute that decision.'], 'high', 'escalate_to_human', 'Billing Support'),
+])
+def test_cli_distinguishes_affirmed_incidents_from_unrelated_context(messages, urgency, action, team, tmp_path, capsys):
+    ticket = edge_ticket('context', messages[0])
+    ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    source = tmp_path / 'context.json'
+    source.write_text(ticket.model_dump_json(), encoding='utf-8')
+
+    assert main(['--ticket-file', str(source), '--no-trace']) == 0
+    result = json.loads(capsys.readouterr().out)[0]
+    assert (result['urgency'], result['action'], result['assigned_team']) == (urgency, action, team)
+
+
+def test_joint_incident_checks_billing_and_status_without_inventing_incident_details():
+    ticket = edge_ticket('joint', 'My card was charged twice. Our entire company cannot access production.')
+    ticket.customer.region = 'Europe'
+    result = DemoTriageAgent().run(ticket)
+
+    assert result.urgency == 'critical'
+    assert result.assigned_team == 'Infrastructure / On-call'
+    assert set(result.issue_types) == {'access_failure', 'repeated_charges_reported'}
+    assert {'check_billing_status', 'check_system_status'} <= set(result.tools_used)
+    assert result.tool_trace[-1].arguments == {'region': 'Europe'}
+    assert 'Billing Support' in result.draft_response
+    assert 'Asia' not in result.draft_response
+    assert 'demo' not in result.summary.lower()
+
+
+def test_long_ticket_keeps_late_billing_evidence():
+    text = 'Could you send me the guide? ' * 100 + 'But now my card was charged twice.'
+    result = DemoTriageAgent().run(edge_ticket('long', text))
+    assert result.urgency == 'high'
+    assert result.action == 'escalate_to_human'
+    kb_trace = next(event for event in result.tool_trace if event.name == 'search_knowledge_base')
+    assert kb_trace.ok and len(kb_trace.arguments['query']) <= 2000
+
+
+def test_refund_status_question_is_not_a_refund_dispute():
+    result = DemoTriageAgent().run(edge_ticket('refund-question', 'How can I check the status of my refund?'))
+    assert result.urgency == 'low'
+    assert 'check_billing_status' not in result.tools_used

@@ -1,3 +1,5 @@
+import pytest
+
 from triage_agent.tools import ToolRegistry, TOOL_SCHEMAS
 
 
@@ -29,9 +31,10 @@ def test_no_match_does_not_invent_article(tickets):
     assert r["articles"] == []
 
 
-def test_status_feed_is_not_incident_confirmation(tickets):
+@pytest.mark.parametrize('region', ['Thailand', 'asia', 'ASIA'])
+def test_status_feed_is_not_incident_confirmation(tickets, region):
     tools = ToolRegistry(tickets["TICKET-002"])
-    response = tools.call("check_system_status", {"region": "Thailand"})
+    response = tools.call("check_system_status", {"region": region})
     assert response["region"] == "Asia"
     assert response["status"]["incident_confirmed"] is None
     assert response["status"]["public_status"] == "operational"
@@ -42,3 +45,20 @@ def test_unknown_tool_fails_closed(tickets):
     response = tools.call("delete_user_data", {"customer_id": "cust-ent-002"})
     assert "error" in response
     assert not tools.trace[-1].ok
+
+
+@pytest.mark.parametrize('overrides', [{'id': []}, {'keywords': 'appearance'}, {'content': 42}, None])
+def test_kb_rejects_invalid_fields_and_conflicting_article_ids(tickets, overrides):
+    tools = ToolRegistry(tickets['TICKET-003'])
+    article = {'id': 'KB-003', 'title': 'Appearance', 'keywords': ['appearance'], 'content': 'First excerpt'}
+    tools.kb = [article | overrides] if overrides is not None else [article, article | {'content': 'Conflicting excerpt'}]
+
+    assert tools.call('search_knowledge_base', {'query': 'appearance'})['source'] == 'tool_error'
+    assert tools.valid_article_ids() == set()
+
+
+def test_invalid_tool_argument_error_does_not_echo_input(tickets):
+    tools = ToolRegistry(tickets['TICKET-003'])
+    result = tools.call('search_knowledge_base', {'query': ['PRIVATE_TEST_MARKER']})
+    assert result['source'] == 'tool_error'
+    assert 'PRIVATE_TEST_MARKER' not in str(result)

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from triage_agent.agent import AgentExecutionError
+from triage_agent.models import PROPOSAL_JSON_SCHEMA
 from triage_agent.typhoon import TyphoonTriageAgent, _chat_tool_schemas
 
 
@@ -56,6 +57,8 @@ def test_typhoon_chat_completion_tool_loop_injected_client(tickets):
     assert requests[0]["tool_choice"]["function"]["name"] == "get_customer_history"
     assert requests[1]["tool_choice"]["function"]["name"] == "search_knowledge_base"
     assert requests[2]["tool_choice"] == "auto"
+    system_prompt = requests[0]['messages'][0]['content']
+    assert json.loads(system_prompt.split('Final answer JSON schema:\n', 1)[1]) == PROPOSAL_JSON_SCHEMA
     assert any(msg["role"] == "tool" and msg["tool_call_id"] == "tool1" for msg in requests[1]["messages"])
     assert all(item["type"] == "function" and "function" in item for item in _chat_tool_schemas())
 
@@ -86,6 +89,23 @@ def test_typhoon_truncated_response_fails_closed(tickets):
     ])
     with pytest.raises(AgentExecutionError, match="truncated"):
         TyphoonTriageAgent(client=fake).run(t)
+
+
+def test_truncated_typhoon_tool_call_is_not_processed(tickets):
+    client = FakeClient([response(name='get_customer_history', finish_reason='length')])
+    with pytest.raises(AgentExecutionError, match='truncated'):
+        TyphoonTriageAgent(client=client).run(tickets['TICKET-001'])
+
+
+def test_typhoon_rejects_tool_call_status_without_a_call(tickets):
+    t = tickets['TICKET-001']
+    client = FakeClient([
+        response(name='get_customer_history', arguments={'customer_id': t.customer.customer_id}),
+        response(name='search_knowledge_base', arguments={'query': 'duplicate payment'}),
+        response(content=proposal_json(), finish_reason='tool_calls'),
+    ])
+    with pytest.raises(AgentExecutionError, match='without call details'):
+        TyphoonTriageAgent(client=client).run(t)
 
 
 def test_typhoon_no_key_error_does_not_reveal_secrets(monkeypatch):

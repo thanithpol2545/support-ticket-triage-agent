@@ -13,7 +13,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .agent import AgentExecutionError, _instructions
-from .models import AgentProposal, Ticket, TriageResult
+from .models import AgentProposal, PROPOSAL_JSON_SCHEMA, Ticket, TriageResult
 from .policy import finalize
 from .tools import TOOL_SCHEMAS, ToolRegistry
 
@@ -57,8 +57,12 @@ class TyphoonTriageAgent:
 
     def run(self, ticket: Ticket) -> TriageResult:
         registry = ToolRegistry(ticket)
+        schema = json.dumps(PROPOSAL_JSON_SCHEMA, separators=(",", ":"))
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": _instructions() + "\nReturn exactly one JSON object, no Markdown fences."},
+            {"role": "system", "content": (
+                _instructions() + "\nReturn exactly one JSON object, no Markdown fences.\n"
+                "Final answer JSON schema:\n" + schema
+            )},
             {"role": "user", "content": json.dumps(ticket.model_dump(), ensure_ascii=False)},
         ]
         required = ["get_customer_history", "search_knowledge_base"]
@@ -87,8 +91,15 @@ class TyphoonTriageAgent:
             if not choices:
                 raise AgentExecutionError("Typhoon returned no completion choices")
             choice = choices[0]
+            finish_reason = getattr(choice, "finish_reason", None)
+            if finish_reason == "length":
+                raise AgentExecutionError("Typhoon output truncated by token limit")
+            if finish_reason == "content_filter":
+                raise AgentExecutionError("Typhoon did not complete the response")
             message = choice.message
             calls = list(getattr(message, "tool_calls", None) or [])
+            if finish_reason == "tool_calls" and not calls:
+                raise AgentExecutionError("Typhoon reported a tool call without call details")
             if round_index < len(required) and (
                 len(calls) != 1 or calls[0].function.name != required[round_index]
             ):
@@ -114,14 +125,12 @@ class TyphoonTriageAgent:
                                      "content": json.dumps(result, ensure_ascii=False)})
                 continue
 
-            if getattr(choice, "finish_reason", None) == "length":
-                raise AgentExecutionError("Typhoon output truncated by token limit")
             content = getattr(message, "content", None)
             if not isinstance(content, str) or not content.strip():
                 raise AgentExecutionError("Typhoon did not produce a JSON proposal")
             try:
                 proposal = AgentProposal.model_validate_json(content)
-            except (ValidationError, ValueError) as exc:
-                raise AgentExecutionError("Typhoon output failed schema validation") from exc
+            except ValidationError:
+                raise AgentExecutionError("Typhoon output failed schema validation") from None
             return finalize(ticket, proposal, registry, "live_typhoon")
         raise AgentExecutionError("Typhoon maximum tool rounds exceeded")
