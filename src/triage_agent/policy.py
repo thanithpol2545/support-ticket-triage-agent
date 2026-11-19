@@ -131,10 +131,6 @@ def _access_problem(ticket: Ticket) -> bool:
                for message in ticket.messages for pattern in _OUTAGE_PATTERNS)
 
 
-def reports_http_500(ticket: Ticket) -> bool:
-    return any(_affirmed_pattern(message.text, _HTTP_500) for message in ticket.messages)
-
-
 def reports_dark_mode_scheduling(ticket: Ticket) -> bool:
     return any("schedule dark mode" in message.text.lower() for message in ticket.messages)
 
@@ -193,7 +189,7 @@ def risk_signals(ticket: Ticket) -> tuple[bool, bool, bool]:
     return outage, billing, dark_bug
 
 
-def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry, mode: str) -> TriageResult:
+def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> TriageResult:
     data = proposal.model_dump()
     changes: list[str] = []
     valid = tools.valid_article_ids()
@@ -338,5 +334,4 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry, mode:
         policy_overrides=changes,
         tools_used=list(dict.fromkeys(event.name for event in tools.trace if event.ok)),
         tool_trace=tools.trace,
-        mode=mode,
     )

@@ -1,31 +1,74 @@
+import io
 import json
-import os
-import subprocess
 import sys
 
-from triage_agent.agent import AgentExecutionError, DemoTriageAgent
+import pytest
+
 from triage_agent.cli import main
 
 
-def test_cli_all_demo_and_four_required_fields(capsys):
-    assert main(["--mode", "demo", "--all", "--no-trace"]) == 0
+def test_cli_all_runs_the_gpt_agent(tickets, mock_openai, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-test-override")
+    billing, outage, appearance = tickets.values()
+    mock_openai.queue(billing, query="duplicate charges upgrade", product="Pro upgrade",
+                      issue_types=["failed_upgrade", "repeated_charges"], sentiment="frustrated",
+                      kb_article_ids=["KB-001"])
+    mock_openai.queue(outage, query="HTTP 500 access", product="Enterprise platform",
+                      issue_types=["access_failure", "http_500"], sentiment="concerned",
+                      kb_article_ids=["KB-002"])
+    mock_openai.queue(appearance, query="dark mode appearance", product="Application appearance",
+                      issue_types=["appearance_bug", "feature_request"], kb_article_ids=["KB-003"])
+
+    assert main(["--all", "--no-trace"]) == 0
     results = json.loads(capsys.readouterr().out)
-    assert len(results) == 3
-    for r in results:
-        assert r["urgency"] in {"critical", "high", "medium", "low"}
-        assert r["action"] in {"auto_respond", "route_to_specialist", "escalate_to_human"}
+    assert [r["ticket_id"] for r in results] == list(tickets)
+    assert [(r["urgency"], r["action"], r["assigned_team"]) for r in results] == [
+        ("high", "escalate_to_human", "Billing Support"),
+        ("critical", "escalate_to_human", "Infrastructure / On-call"),
+        ("medium", "route_to_specialist", "Product Support"),
+    ]
+    for r, citation in zip(results, ("KB-001", "KB-002", "KB-003"), strict=True):
         assert r["product"] and r["issue_types"] and r["sentiment"]
-        assert len(r["tools_used"]) >= 2
-        assert r["mode"] == "demo_rules"
-    outage = next(result for result in results if result["ticket_id"] == "TICKET-002")
-    assert set(outage["issue_types"]) == {"access_failure", "http_500"}
+        assert r["kb_article_ids"] == [citation]
+        assert r["tools_used"] == ["get_customer_history", "search_knowledge_base"]
+        assert "mode" not in r and "tool_trace" not in r
+    assert set(results[1]["issue_types"]) == {"access_failure", "http_500"}
+    assert mock_openai.create.call_count == 9
+    for request in mock_openai.create.call_args_list:
+        assert request.kwargs["model"] == "gpt-test-override"
+    assert [json.loads(request.kwargs["input"][0]["content"]) for request in mock_openai.create.call_args_list[::3]] == [
+        ticket.model_dump() for ticket in tickets.values()
+    ]
 
 
-def test_cli_output_file(tmp_path, capsys):
-    path = tmp_path / "result.json"
-    assert main(["--ticket", "TICKET-002", "--output", str(path)]) == 0
-    assert path.is_file()
-    assert json.loads(path.read_text(encoding="utf-8"))["urgency"] == "critical"
+def test_cli_ticket_and_output(tickets, mock_openai, tmp_path, capsys):
+    mock_openai.queue(tickets["TICKET-002"])
+    path = tmp_path / "reports" / "result.json"
+    assert main(["--ticket", "TICKET-002", "--output", str(path), "--no-trace"]) == 0
+    result = json.loads(path.read_text(encoding="utf-8"))
+    assert result == json.loads(capsys.readouterr().out)
+    assert result["ticket_id"] == "TICKET-002"
+    assert result["urgency"] == "critical"
+    assert "tool_trace" not in result
+    assert mock_openai.create.call_args.kwargs["model"] == "gpt-4.1-mini"
+
+
+def test_cli_defaults_to_first_ticket(tickets, mock_openai, capsys):
+    mock_openai.queue(tickets["TICKET-001"])
+    assert main([]) == 0
+    assert json.loads(capsys.readouterr().out)["ticket_id"] == "TICKET-001"
+    assert mock_openai.create.call_count == 3
+
+
+def test_cli_ticket_file_batch_preserves_order(tickets, mock_openai, tmp_path, capsys):
+    batch = [tickets["TICKET-003"], tickets["TICKET-001"]]
+    path = tmp_path / "tickets.json"
+    path.write_text(json.dumps([ticket.model_dump() for ticket in batch]), encoding="utf-8")
+    for ticket in batch:
+        mock_openai.queue(ticket)
+    assert main(["--ticket-file", str(path)]) == 0
+    results = json.loads(capsys.readouterr().out)
+    assert [r["ticket_id"] for r in results] == [ticket.ticket_id for ticket in batch]
 
 
 def test_cli_rejects_unknown_ticket(capsys):
@@ -33,15 +76,48 @@ def test_cli_rejects_unknown_ticket(capsys):
     assert "Unknown ticket ID" in capsys.readouterr().err
 
 
-def test_subprocess_full_trace_json_round_trips_in_legacy_windows_encoding(tmp_path):
-    output = tmp_path / 'output.json'
-    completed = subprocess.run(
-        [sys.executable, '-m', 'triage_agent', '--all', '--output', str(output)],
-        env=dict(os.environ, PYTHONIOENCODING='cp874'), capture_output=True, check=True, timeout=30,
-    )
-    data = json.loads(completed.stdout.decode('cp874'))
-    assert data == json.loads(output.read_text(encoding='utf-8'))
-    assert '😊' in data[2]['tool_trace'][1]['arguments']['query']
+def test_full_trace_json_round_trips_in_legacy_windows_encoding(tickets, mock_openai, tmp_path, monkeypatch):
+    mock_openai.queue(tickets["TICKET-003"], query="appearance 😊")
+    output = tmp_path / "output.json"
+    raw = io.BytesIO()
+    with monkeypatch.context() as redirect, io.TextIOWrapper(raw, encoding="cp874") as stdout:
+        redirect.setattr(sys, "stdout", stdout)
+        assert main(["--ticket", "TICKET-003", "--output", str(output)]) == 0
+        stdout.flush()
+        data = json.loads(raw.getvalue().decode("cp874"))
+    assert data == json.loads(output.read_text(encoding="utf-8"))
+    assert "😊" in data["tool_trace"][1]["arguments"]["query"]
+
+
+def test_help_has_no_provider_selection(capsys):
+    with pytest.raises(SystemExit) as exit_code:
+        main(["--help"])
+    assert exit_code.value.code == 0
+    assert "--mode" not in capsys.readouterr().out
+
+
+def test_obsolete_mode_is_rejected(capsys):
+    with pytest.raises(SystemExit) as exit_code:
+        main(["--mode", "live", "--all"])
+    assert exit_code.value.code == 2
+    captured = capsys.readouterr()
+    assert "unrecognized arguments: --mode live" in captured.err
+    assert captured.out == ""
+
+
+@pytest.mark.parametrize("key", [None, "   "])
+def test_missing_key_reports_setup_without_outputs(monkeypatch, tmp_path, capsys, key):
+    if key is None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    else:
+        monkeypatch.setenv("OPENAI_API_KEY", key)
+    output = tmp_path / "results.json"
+    assert main(["--all", "--output", str(output)]) == 2
+    captured = capsys.readouterr()
+    assert "OPENAI_API_KEY is required" in captured.err
+    assert "PowerShell" in captured.err and "Bash" in captured.err
+    assert captured.out == ""
+    assert not output.exists()
 
 
 def test_cli_schema_error_never_echoes_ticket_contents(tmp_path, capsys):
@@ -54,18 +130,13 @@ def test_cli_schema_error_never_echoes_ticket_contents(tmp_path, capsys):
     assert captured.out == ''
 
 
-def test_provider_failure_mid_batch_leaves_existing_output_intact(monkeypatch, tmp_path, capsys):
-    class InterruptedAgent:
-        def run(self, ticket):
-            if ticket.ticket_id == 'TICKET-002':
-                raise AgentExecutionError('Simulated provider timeout')
-            return DemoTriageAgent().run(ticket)
-
-    monkeypatch.setattr('triage_agent.cli.GPTTriageAgent', InterruptedAgent)
+def test_provider_failure_mid_batch_leaves_existing_output_intact(tickets, mock_openai, tmp_path, capsys):
+    mock_openai.queue(tickets["TICKET-001"])
+    mock_openai.replies.append(TimeoutError("simulated provider timeout"))
     existing = tmp_path / 'result.json'
     existing.write_text('previous output', encoding='utf-8')
-    assert main(['--mode', 'live', '--all', '--output', str(existing)]) == 2
+    assert main(['--all', '--output', str(existing)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ''
-    assert 'Simulated provider timeout' in captured.err
+    assert 'OpenAI response failed (TimeoutError)' in captured.err
     assert existing.read_text(encoding='utf-8') == 'previous output'
