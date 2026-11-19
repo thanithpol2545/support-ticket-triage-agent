@@ -7,6 +7,7 @@ to send arbitrary model-generated text to a customer.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 
 from .models import AgentProposal, Ticket, TriageResult
 from .tools import ToolRegistry
@@ -73,6 +74,9 @@ _SCOPED_OUTAGE_PATTERNS = (
     r"\b(?:no one|nobody|none\s+of\s+(?:(?:our|my|the)\s+)?" + _MULTI_USER + r")"
     + _SCOPE_LOCATION + r"\s+(?:can|is able to)\s+(?:log\s*in|sign\s*in|access)\b",
 )
+_IMPACT_REPORT = (
+    _OUTAGE_SYMPTOM + r"\s+(?:affects|is\s+affecting)\s+(?:(?:my|our|the)\s+)?" + _MULTI_USER
+)
 _SCOPED_FOLLOWUP = (
     _MULTI_USER + _GROUP_REPORT_WORDS + r"\bsame\s+error\b",
     r"\bsame\s+error\s+for\s+(?:(?:my|our|the)\s+)?" + _MULTI_USER,
@@ -92,7 +96,16 @@ _NEGATION = re.compile(
 )
 
 
-def _affirmed_pattern(message: str, pattern: str) -> bool:
+# A denied belief does not establish that an outage affects a group.
+_IMPACT_REPORT_NEGATION = re.compile(
+    rf"{_NEGATION.pattern}|\b(?:don|doesn|didn)['’]t\s+(?:think|believe)\b[\w\s'’-]{{0,24}}$",
+    _NEGATION.flags,
+)
+
+
+def _affirmed_pattern(
+    message: str, pattern: str, *, negation: re.Pattern[str] = _NEGATION
+) -> bool:
     """Match a clear signal unless directly negated in the same clause.
 
     This is intentionally modest: ambiguous wording should be handled by the
@@ -101,7 +114,7 @@ def _affirmed_pattern(message: str, pattern: str) -> bool:
     for found in re.finditer(pattern, message, re.IGNORECASE):
         prefix = message[max(0, found.start() - 65): found.start()]
         prefix = _CLAUSE_BREAK.split(prefix)[-1]
-        if not _NEGATION.search(prefix):
+        if not negation.search(prefix):
             return True
     return False
 
@@ -144,18 +157,29 @@ def _floor_urgency(value: str, minimum: str) -> str:
     return value if RANK[value] >= RANK[minimum] else minimum
 
 
+def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
+    """Yield each clause together with its terminating delimiter."""
+    for message in messages:
+        start = 0
+        for boundary in _CLAUSE_BREAK.finditer(message):
+            yield message[start:boundary.start()], boundary.group()
+            start = boundary.end()
+        yield message[start:], ""
+
+
 def _multi_user_outage(messages: list[str]) -> bool:
     symptom_reported = False
-    for message in messages:
-        for clause in _CLAUSE_BREAK.split(message):
-            if any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_OUTAGE_PATTERNS):
-                return True
-            symptom_in_clause = _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
-            symptom_reported = symptom_reported or symptom_in_clause
-            if symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP):
-                return True
-            if symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP):
-                return True
+    for clause, delimiter in _outage_clauses(messages):
+        if any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_OUTAGE_PATTERNS):
+            return True
+        if delimiter != "?" and _affirmed_pattern(clause, _IMPACT_REPORT, negation=_IMPACT_REPORT_NEGATION):
+            return True
+        symptom_in_clause = _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
+        symptom_reported = symptom_reported or symptom_in_clause
+        if symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP):
+            return True
+        if symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP):
+            return True
     return False
 
 

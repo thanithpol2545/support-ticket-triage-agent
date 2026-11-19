@@ -1,6 +1,21 @@
 # Engineering verification for the Ooca assignment
 
-## OpenAI CLI follow-up · 2026-11-19
+## Outage scope regression after PR #2 · 2026-11-19
+
+Baseline was remote `main` at `07a05ec90cbfbf3a06ddefeb3ce561fa26c3c0c1`. Each repro reused the TICKET-002 customer profile and changed only the message. `HTTP 500 affects all users.` and `HTTP 500 is affecting all users.` previously returned `medium / route_to_specialist` for Technical Support and skipped system status. The shared policy did the same when given a simulated `low / auto_respond` proposal after both required tools succeeded.
+
+All three affirmative acceptance phrasings now return `critical / escalate_to_human` for Infrastructure / On-call. The CLI trace shows a successful `check_system_status` for each. The individual report stays `medium` and the full denial stays `low`. A denial of broad impact stays below `critical`. The independent review also checked that the new wording does not escalate a scope question or a denied claim. An affirmative report followed by a request for help still escalates. [Policy](../src/triage_agent/policy.py) · [CLI regressions](../tests/test_e2e_regression.py) · [Simulated policy regressions](../tests/test_policy.py)
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Independent targeted tests | `python -m pytest -q tests/test_e2e_regression.py::test_cli_outage_impact_controls_routing_and_status_tool tests/test_policy.py::test_broad_outage_overrides_simulated_low_auto_respond_proposal` | Baseline 6 failed and 10 passed. Final patch 16 passed. |
+| Full suite | `python -m pytest -q` | 139 passed on Windows Python 3.11.16 |
+| Original demo tickets | `python -m triage_agent --mode demo --all --no-trace` | 3/3 urgency, action and team |
+| Edge fixtures | `python -m triage_agent --mode demo --ticket-file <temporary-ticket.json>` per fixture | 9/9 urgency and 6/6 specified actions. EDGE-006, EDGE-007 and EDGE-009 specify urgency only. |
+
+Authenticated OpenAI is **NOT VERIFIED** because the test environment had no authorized key. The assignment states that Ooca will supply its own key. Separate prior QA observations remain recorded for later evaluation: a specialist draft can retain a password request, four edge queries miss relevant KB articles, and the appearance handoff summary omits the System Default reproduction detail.
+
+## Prior OpenAI CLI follow-up · 2026-11-19
 
 PR [#2](https://github.com/thanithpol2545/support-ticket-triage-agent/pull/2) was open as a draft. Its head and the clean local checkout matched `8fd0544c339d805661ab5b16d81212f2554b4ac4`. The remote default branch was `main` at `9e7e62eaa53effd03feca251719ceb7ba4d8f9d6`. On Windows Python 3.11.16 the starting suite passed 117 tests with 93% statement coverage. [Starting commit CI](https://github.com/thanithpol2545/support-ticket-triage-agent/actions/runs/44348889265)
 

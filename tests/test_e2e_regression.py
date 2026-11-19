@@ -148,6 +148,78 @@ def test_cli_distinguishes_affirmed_incidents_from_unrelated_context(messages, u
     assert (result['urgency'], result['action'], result['assigned_team']) == (urgency, action, team)
 
 
+
+@pytest.mark.parametrize(
+    'message,urgency,action,team',
+    [
+        pytest.param(
+            'All users get HTTP 500.', 'critical', 'escalate_to_human',
+            'Infrastructure / On-call', id='group-first',
+        ),
+        pytest.param(
+            'HTTP 500 affects all users.', 'critical', 'escalate_to_human',
+            'Infrastructure / On-call', id='affects',
+        ),
+        pytest.param(
+            'HTTP 500 is affecting all users.', 'critical', 'escalate_to_human',
+            'Infrastructure / On-call', id='is-affecting',
+        ),
+        pytest.param(
+            'I get HTTP 500. Everyone else can log in.', 'medium', 'route_to_specialist',
+            'Technical Support', id='only-one-user',
+        ),
+        pytest.param(
+            'No HTTP 500 occurred. Everyone can log in.', 'low', None, None,
+            id='no-error',
+        ),
+        pytest.param(
+            'HTTP 500 does not affect all users.', None, None, None,
+            id='not-all-users',
+        ),
+        pytest.param(
+            "I don't think HTTP 500 affects all users. Only I get the error.", None, None, None,
+            id='doubt-about-scope',
+        ),
+        pytest.param(
+            'HTTP 500 affects all users? Everyone can log in.', None, None, None,
+            id='asks-about-scope',
+        ),
+        pytest.param(
+            'HTTP 500 affects all our users. Can you check?', 'critical', 'escalate_to_human',
+            'Infrastructure / On-call', id='affirmed-before-question',
+        ),
+        pytest.param(
+            'All users get HTTP 500 can you help?', 'critical', 'escalate_to_human',
+            'Infrastructure / On-call', id='group-first-with-help-question',
+        ),
+    ],
+)
+def test_cli_outage_impact_controls_routing_and_status_tool(
+    tickets, message, urgency, action, team, tmp_path, capsys,
+):
+    ticket = tickets['TICKET-002'].model_copy(update={'messages': [Message(when='now', text=message)]})
+    source = tmp_path / 'impact.json'
+    source.write_text(ticket.model_dump_json(), encoding='utf-8')
+
+    assert main(['--mode', 'demo', '--ticket-file', str(source)]) == 0
+    result = json.loads(capsys.readouterr().out)[0]
+    status_calls = [call for call in result['tool_trace'] if call['name'] == 'check_system_status']
+
+    if urgency is None:
+        assert result['urgency'] != 'critical'
+    else:
+        assert result['urgency'] == urgency
+    if action is not None:
+        assert (result['action'], result['assigned_team']) == (action, team)
+    elif urgency == 'low':
+        assert result['action'] != 'escalate_to_human'
+
+    if urgency == 'critical':
+        assert any(call['ok'] for call in status_calls)
+    else:
+        assert not status_calls
+
+
 def test_joint_incident_checks_billing_and_status_without_inventing_incident_details():
     ticket = edge_ticket('joint', 'My card was charged twice. Our entire company cannot access production.')
     ticket.customer.region = 'Europe'
