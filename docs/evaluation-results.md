@@ -2,7 +2,7 @@
 
 ตรวจวันที่ 19 พฤศจิกายน 2026 ที่ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` ผลหลังแก้วัดจาก working tree ที่ส่งมอบบน baseline นี้ การประมวลผลจริงยังใช้ GPT ผ่าน OpenAI Responses API
 
-**Offline รอบแรก 153 tests ผ่าน** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแก้เทียบกับ `cdef161` ผ่าน **165 tests** และรอบแก้สำนวนเพิ่มจาก Research ผ่าน **172 tests** ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
+**Offline รอบแรก 153 tests ผ่าน** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแก้เทียบกับ `cdef161` ผ่าน **165 tests** และสองรอบแก้สำนวนเพิ่มจาก Research ผ่าน **172** และ **178 tests** ตามลำดับ ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
@@ -43,7 +43,7 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 
 ### ตรวจซ้ำตามผลรีวิว PR #5
 
-ชุดใหม่ใช้ข้อเสนอจำลองจาก OpenAI แล้วตรวจทั้ง `proposal` และ `result` ใน `--audit` เดียวกัน เทสต์ชุดแรกตก **4** และผ่าน **8** บน `cdef161` จากนั้นผ่าน **12/12** บน `ecf480a` เมื่อเพิ่มสำนวนที่ Research ใช้ตรวจอิสระ ชุดขยายตก **5** และผ่าน **14** กับ Policy ของ `ecf480a` หลังแก้เพิ่มผ่าน **19/19**
+ชุดใหม่ใช้ข้อเสนอจำลองจาก OpenAI แล้วตรวจทั้ง `proposal` และ `result` ใน `--audit` เดียวกัน เทสต์ชุดแรกตก **4** และผ่าน **8** บน `cdef161` จากนั้นผ่าน **12/12** บน `ecf480a` ชุดขยายจากการตรวจอิสระรอบแรกตก **5** และผ่าน **14** กับ Policy ของ `ecf480a` แล้วผ่าน **19/19** บน `af77181` หลังเพิ่มสำนวนที่ Research พบในรอบที่สอง ชุดล่าสุดตก **5** และผ่าน **20** กับ Policy ของ `af77181` แล้วผ่าน **25/25** หลังแก้
 
 | เคส | ก่อนแก้ | หลังแก้ |
 | --- | --- | --- |
@@ -57,6 +57,9 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | พนักงานใน Thailand เข้าไม่ได้ แล้วพนักงานใน Germany กลับเข้าได้ | ร่างยืนยันการกู้คืนแบบไม่ระบุขอบเขตบน `ecf480a` | ระบุว่า Germany กลับเข้าได้ และการกู้คืนใน Thailand ยังไม่ยืนยัน |
 | Asia และ Europe ต่างยืนยันว่ากู้คืนแล้ว ต่อมา Europe แจ้ง HTTP 500 อีก | บน `ecf480a` ร่างระบุเพียงว่ายังไม่ยืนยันการกู้คืนใน Europe | ร่างเก็บการกู้คืนใน Asia และบอกว่ารายงานล่าสุดจาก Europe คือเข้าใช้งานไม่ได้ |
 | `All users in Asia get HTTP 500 right now and I need to know if there is a runbook.` | `ecf480a` คงข้อเสนอ `low / route_to_specialist` ผิด | ยกระดับเป็น `critical / escalate_to_human` ไป Infrastructure / On-call ส่วน `All users get HTTP 500 if the service is down.` ยังคงเป็นกรณีสมมติ |
+| `What is the password you use to sign in?` | `af77181` ส่งคำถามขอรหัสผ่านผ่านทั้งสอง action ส่งต่อ | ใช้ร่างเตือนเรื่องความปลอดภัยและคง action กับทีม |
+| `In Singapore all employees cannot sign in.` แล้ว `In Japan all staff can sign in again.` | `af77181` รายงานการกู้คืนโดยรวม | ร่างระบุว่ากู้คืนใน Japan และยังไม่ยืนยันการกู้คืนใน Singapore ทั้งแบบมีและไม่มีจุลภาคหลังชื่อพื้นที่ |
+| `All users in Europe are getting HTTP 500 right now and please let me know if I should page on-call.` | `af77181` ข้ามรายงานเหตุเพราะคำถามส่วนท้ายมี `if` | คงรายงาน HTTP 500 เป็นเหตุจริงและยกระดับไป Infrastructure / On-call |
 
 รันซ้ำด้วย `python -m pytest -q tests/test_paired_regression.py -k audit` เกณฑ์ P04–P07 มี **18 ข้อที่ประเมินได้** โดยตัด field ที่เป็น `pending` ออกจากตัวส่วน ยังไม่มีการให้คะแนนจาก GPT จริง [เกณฑ์ให้คะแนนราย A/B](paired-scoring-rubric.md)
 
@@ -101,7 +104,7 @@ python -m evaluation.banking77 verify
 python -m evaluation.paired probe
 ```
 
-`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน การทำซ้ำผลสำนวนเพิ่มก่อนแก้ใช้ PowerShell โหลด Policy ของ `ecf480a` เข้าหน่วยความจำแล้วรัน CLI กับข้อเสนอจำลองชุดขยาย สำหรับผล **4 ตก / 8 ผ่าน** ให้ใช้เทสต์ที่ `ecf480a` แล้วตั้ง `revision` เป็น `cdef161a32ed51d802ef80a6ff2fdc4239fad7d7` ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
+`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน คำสั่ง PowerShell ด้านล่างโหลด Policy ของ `af77181` แล้ว replay เทสต์ล่าสุดเพื่อได้ผล **5 ตก / 20 ผ่าน** สำหรับผล **5 ตก / 14 ผ่าน** ให้ใช้เทสต์ที่ `af77181` และตั้ง `revision` เป็น `ecf480a313a8fb85e09f87775948851df699cc48` สำหรับผล **4 ตก / 8 ผ่าน** ใช้เทสต์ที่ `ecf480a` กับ Policy ของ `cdef161a32ed51d802ef80a6ff2fdc4239fad7d7` ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
 
 ```powershell
 @'
@@ -111,7 +114,7 @@ from types import ModuleType
 import pytest
 from triage_agent import agent
 
-revision = "ecf480a313a8fb85e09f87775948851df699cc48"
+revision = "af771815f12eb40254014654e48978ffc866ff08"
 path = "src/triage_agent/policy.py"
 baseline = ModuleType("triage_agent.baseline_policy")
 source = subprocess.check_output(["git", "show", f"{revision}:{path}"])

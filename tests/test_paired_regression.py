@@ -30,8 +30,9 @@ def run_audit(mock_openai, tmp_path, capsys):
 )
 @pytest.mark.parametrize(
     "request_text",
-    ["Please provide us with your password.", "Could you confirm your account password so we can update your email?"],
-    ids=["provide-password", "confirm-password"],
+    ["Please provide us with your password.", "Could you confirm your account password so we can update your email?",
+     "What is the password you use to sign in?"],
+    ids=["provide-password", "confirm-password", "ask-for-password"],
 )
 def test_audit_password_request_is_removed_from_every_final_action(action, team, request_text, run_audit):
     ticket = ticket_for(PAIRS["P08"], "A")
@@ -99,18 +100,27 @@ def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, f
         assert fragment.lower() not in draft
 
 
-def test_audit_outage_draft_does_not_merge_different_countries(run_audit):
+@pytest.mark.parametrize(
+    "outage,recovery,affected,recovered",
+    [
+        ("All employees in Thailand cannot sign in.", "All employees in Germany can sign in again.", "Thailand", "Germany"),
+        ("In Singapore all employees cannot sign in.", "In Japan all staff can sign in again.", "Singapore", "Japan"),
+        ("In Singapore, all employees cannot sign in.", "In Japan, all staff can sign in again.", "Singapore", "Japan"),
+    ],
+    ids=["location-after-group", "location-before-group", "location-before-group-with-comma"],
+)
+def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery, affected, recovered, run_audit):
     ticket = ticket_for(PAIRS["P12"], "A")
     ticket.messages = [
-        Message(when="1", text="All employees in Thailand cannot sign in."),
-        Message(when="2", text="All employees in Germany can sign in again."),
+        Message(when="1", text=outage),
+        Message(when="2", text=recovery),
     ]
     audit = run_audit(ticket, draft_response="Thanks for confirming the outage is resolved.", action="route_to_specialist")
     draft = audit["result"]["draft_response"].lower()
 
-    assert "users in germany can access the system again" in draft
-    assert "whether access has been restored in thailand remains unconfirmed" in draft
-    assert "users in thailand can access the system again" not in draft
+    assert f"users in {recovered.lower()} can access the system again" in draft
+    assert f"whether access has been restored in {affected.lower()} remains unconfirmed" in draft
+    assert f"users in {affected.lower()} can access the system again" not in draft
 
 
 @pytest.mark.parametrize(
@@ -126,6 +136,10 @@ def test_audit_outage_draft_does_not_merge_different_countries(run_audit):
         pytest.param(
             "All users in Asia get HTTP 500 right now and I need to know if there is a runbook.",
             True, id="affirmed-before-coordinated-question",
+        ),
+        pytest.param(
+            "All users in Europe are getting HTTP 500 right now and please let me know if I should page on-call.",
+            True, id="affirmed-before-coordinated-indirect-question",
         ),
         pytest.param(
             "All users get HTTP 500 if the service is down. What is the procedure?",
