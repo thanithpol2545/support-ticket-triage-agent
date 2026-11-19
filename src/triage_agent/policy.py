@@ -99,7 +99,9 @@ _HYPOTHETICAL = re.compile(rf"\bwhat\s+if\b|{_CONDITION_MARKER}", re.IGNORECASE)
 _POSTFIX_CONDITION = re.compile(rf"\s*(?:only\s+)?(?:{_CONDITION_MARKER})", re.IGNORECASE)
 _ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
 _REQUEST_START = re.compile(
-    r"\s*(?:please|what|when|where|who|how|(?:can|could|would|should)\s+(?:you|we)|let\s+(?:me|us)\s+know)\b",
+    r"\s*(?:please|what|when|where|who|how|(?:can|could|would|should|do|are)\s+(?:you|we)|"
+    r"let\s+(?:me|us)\s+know|(?:then\s+)?(?:do\s+not\s+)?[a-z]+\s+"
+    r"(?:this|that|it|the|an?|our|your|us|me|to|on[- ]call))\b",
     re.IGNORECASE,
 )
 _COORDINATED_FOLLOWUP = re.compile(
@@ -123,10 +125,11 @@ _LEADING_SCOPE = re.compile(_SCOPE_PREFIX + rf"\s+(?={_OUTAGE_SCOPE_SUBJECT})", 
 _BARE_SCOPE = re.compile(_SCOPE_PREFIX + r"\s*$", re.IGNORECASE)
 _SCOPE_HEADING = re.compile(
     r"^\s*(?!(?:status|update|report|alert|incident|outage|notes?|fyi|summary|context|question|example|"
-    r"impact|recovery|symptoms?|scope|workaround|time|timeline|next\s+steps?)\s*:)"
+    r"impact|recovery|resolution|affected\s+(?:users|areas?|regions?)|symptoms?|scope|workaround|time|timeline|next\s+steps?)\s*:)"
     rf"({_LOCATION})\s*:(?!\d)",
     re.IGNORECASE,
 )
+_LOCATION_LABEL = re.compile(r"\b(?:office|region|branch|campus|site|zone|data\s*cent(?:er|re)|hub)$", re.IGNORECASE)
 _REGION_NAME = (
     r"(?:\b(?:asia(?:[- ]pacific)?|apac|europe|eu|north america|south america|africa|oceania|australia)\b"
     r"|เอเชีย|ยุโรป)"
@@ -245,7 +248,11 @@ def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
         for index, (clause, delimiter) in enumerate(zip(clauses, delimiters)):
             if not conditional:
                 heading = _SCOPE_HEADING.match(clause)
-                if heading:
+                # An established scope survives inline fields until a clearly named location changes it.
+                if heading and (
+                    not section_scope or _LOCATION_LABEL.search(heading[1])
+                    or re.fullmatch(_REGION_NAME, heading[1], re.IGNORECASE)
+                ):
                     section_scope = heading.group().strip()
                 elif leading_scope:
                     if delimiter == "\n" and not clause.strip():
@@ -266,7 +273,7 @@ def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
                         # A complete conditional request attaches its premise to the request itself.
                         follows_with_request = (
                             delimiters[index + 1] in _OUTAGE_CONTINUATIONS
-                            and (delimiters[index + 2] == "?" or _REQUEST_START.match(clauses[index + 2]))
+                            and _REQUEST_START.match(clauses[index + 2])
                         )
                         if not follows_with_request:
                             continue

@@ -122,17 +122,20 @@ def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, f
          "Osaka office", "Manila office"),
         ("Cebu office:\nImpact: all staff cannot sign in.", "Taipei office:\nRecovery: all staff can sign in again.",
          "Cebu office", "Taipei office"),
+        ("Cebu office:\nAffected users: all staff cannot sign in.", "Taipei office:\nResolution: all staff can sign in again.",
+         "Cebu office", "Taipei office"),
+        ("Cebu office:\nObservations: all staff cannot sign in.\nTaipei office: all staff can sign in again.",
+         None, "Cebu office", "Taipei office"),
     ],
     ids=["location-after-group", "location-before-group", "location-before-group-with-comma", "location-as-heading",
          "location-heading-with-time-modifier", "location-heading-on-separate-line", "location-heading-before-timestamp",
-         "location-with-incident-subheading"],
+         "location-with-incident-subheading", "location-with-alternative-subheading", "location-with-custom-field-and-new-section"],
 )
 def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery, affected, recovered, run_audit):
     ticket = ticket_for(PAIRS["P12"], "A")
-    ticket.messages = [
-        Message(when="1", text=outage),
-        Message(when="2", text=recovery),
-    ]
+    ticket.messages = [Message(when="1", text=outage)]
+    if recovery is not None:
+        ticket.messages.append(Message(when="2", text=recovery))
     audit = run_audit(ticket, draft_response="Thanks for confirming the outage is resolved.", action="route_to_specialist")
     draft = audit["result"]["draft_response"].lower()
 
@@ -182,6 +185,14 @@ def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery,
         pytest.param(
             "All users in Asia are getting HTTP 500 — if you're on call, can you check?",
             True, id="affirmed-before-conditional-request",
+        ),
+        pytest.param(
+            "All users in Europe are getting HTTP 500 — if the regional on-call is unavailable, send this to the backup team.",
+            True, id="affirmed-before-conditional-instruction",
+        ),
+        pytest.param(
+            "All users in Asia get HTTP 500 — if the service goes down, right?",
+            False, id="hypothetical-before-confirmation-tag",
         ),
         pytest.param(
             "All users in Asia get HTTP 500, but only if the service goes down. Who is on-call?",
