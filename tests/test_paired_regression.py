@@ -116,9 +116,11 @@ def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, f
         ("Singapore: all employees cannot sign in.", "Japan: all staff can sign in again.", "Singapore", "Japan"),
         ("Cebu office: currently all staff cannot sign in.", "Taipei office: now all staff can sign in again.",
          "Cebu office", "Taipei office"),
+        ("Jakarta office:\nCurrently all staff cannot sign in.", "Seoul office:\nNow all staff can sign in again.",
+         "Jakarta office", "Seoul office"),
     ],
     ids=["location-after-group", "location-before-group", "location-before-group-with-comma", "location-as-heading",
-         "location-heading-with-time-modifier"],
+         "location-heading-with-time-modifier", "location-heading-on-separate-line"],
 )
 def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery, affected, recovered, run_audit):
     ticket = ticket_for(PAIRS["P12"], "A")
@@ -163,6 +165,14 @@ def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery,
         pytest.param(
             "If the system goes down — all staff cannot log in. Who is on-call?",
             False, id="hypothetical-across-dash",
+        ),
+        pytest.param(
+            "All users in Asia get HTTP 500 — if the service goes down. Who is on-call?",
+            False, id="hypothetical-if-after-dash",
+        ),
+        pytest.param(
+            "All users in Asia get HTTP 500, but only if the service goes down. Who is on-call?",
+            False, id="hypothetical-but-only-if-after-comma",
         ),
         pytest.param(
             "All users get HTTP 500 if the service is down. What is the procedure?",

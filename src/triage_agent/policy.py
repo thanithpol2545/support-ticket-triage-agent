@@ -87,11 +87,16 @@ _AFFECTED_GROUP = _MULTI_USER + _GROUP_REPORT_WORDS + r"\baffected\s*$"
 _DARK_DEFECT = re.compile(r"still\s+(?:shows?\s+)?light|not\s+working|doesn't\s+work|bug|ไม่ทำงาน", re.IGNORECASE)
 _APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light theme|appearance)\b|(?:โหมดมืด|ธีมมืด)"
 _CLAUSE_BREAK = re.compile(r"[.!?;\n,]|\b(?:but|however|yet)\b|แต่", re.IGNORECASE)
-_OUTAGE_CLAUSE_BREAK = re.compile(rf"({_CLAUSE_BREAK.pattern}|[–—]|(?<=\s)-(?=\s))", re.IGNORECASE)
+_OUTAGE_CLAUSE_BREAK = re.compile(
+    rf"(,\s*but\b(?=\s+only\s+if\b)|{_CLAUSE_BREAK.pattern}|[–—]|(?<=\s)-(?=\s))", re.IGNORECASE,
+)
+_OUTAGE_CONTINUATIONS = {",", ";", "-", "–", "—"}
 _HYPOTHETICAL = re.compile(
     r"\b(?:what\s+if|if|unless|in\s+case|in\s+the\s+event\s+that|suppose|assuming)\b|ถ้า|หาก|สมมติว่า",
     re.IGNORECASE,
 )
+_POSTFIX_CONDITION = re.compile(r"\s*(?:(?:only\s+)?if\b|unless\b|in\s+the\s+event\s+that\b|ถ้า|หาก)", re.IGNORECASE)
+_ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
 _COORDINATED_FOLLOWUP = re.compile(
     r"\b(?:and|then)\s+(?:(?:please|(?:can|could|would|should)\s+(?:you|we|i))\b.*"
     r"|(?:[\w'’-]+\s+){0,8}(?:know|wonder|ask|check|tell|confirm|see|advise)(?:\s+(?:me|us))?)\s*$",
@@ -229,13 +234,21 @@ def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
         parts = _OUTAGE_CLAUSE_BREAK.split(message)
         conditional = False
         leading_scope = ""
-        for clause, delimiter in zip(parts[::2], [*parts[1::2], ""]):
+        for clause, delimiter, next_clause in zip(parts[::2], [*parts[1::2], ""], [*parts[2::2], ""]):
             if not conditional:
                 if leading_scope:
+                    if delimiter == "\n" and not clause.strip():
+                        continue
                     clause = f"{leading_scope} {clause.lstrip()}"
                     leading_scope = ""
-                elif delimiter == "," and _BARE_SCOPE.fullmatch(clause):
+                elif (delimiter == "," and _BARE_SCOPE.fullmatch(clause)) or (
+                    delimiter == "\n" and _SCOPE_HEADING.fullmatch(clause.rstrip())
+                ):
                     leading_scope = clause
+                    continue
+                if (delimiter in _OUTAGE_CONTINUATIONS and _POSTFIX_CONDITION.match(next_clause)) or (
+                    delimiter.casefold().endswith("but") and _ONLY_IF.match(next_clause)
+                ):
                     continue
                 premise = _HYPOTHETICAL.search(clause)
                 if premise is None:
@@ -245,7 +258,7 @@ def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
                     followup = _COORDINATED_FOLLOWUP.search(clause, 0, premise.start())
                     if followup:
                         yield clause[:followup.start()], "."
-            if delimiter not in {",", ";", "-", "–", "—"}:
+            if delimiter not in _OUTAGE_CONTINUATIONS:
                 conditional = False
 
 
