@@ -97,6 +97,10 @@ _HYPOTHETICAL = re.compile(
 )
 _POSTFIX_CONDITION = re.compile(r"\s*(?:(?:only\s+)?if\b|unless\b|in\s+the\s+event\s+that\b|ถ้า|หาก)", re.IGNORECASE)
 _ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
+_REQUEST_START = re.compile(
+    r"\s*(?:please|what|when|where|who|how|(?:can|could|would|should)\s+(?:you|we)|let\s+(?:me|us)\s+know)\b",
+    re.IGNORECASE,
+)
 _COORDINATED_FOLLOWUP = re.compile(
     r"\b(?:and|then)\s+(?:(?:please|(?:can|could|would|should)\s+(?:you|we|i))\b.*"
     r"|(?:[\w'’-]+\s+){0,8}(?:know|wonder|ask|check|tell|confirm|see|advise)(?:\s+(?:me|us))?)\s*$",
@@ -118,7 +122,7 @@ _LEADING_SCOPE = re.compile(_SCOPE_PREFIX + rf"\s+(?={_OUTAGE_SCOPE_SUBJECT})", 
 _BARE_SCOPE = re.compile(_SCOPE_PREFIX + r"\s*$", re.IGNORECASE)
 _SCOPE_HEADING = re.compile(
     rf"^\s*(?!(?:status|update|report|alert|incident|outage|note|fyi|summary|context|question|example)\s*:)"
-    rf"({_LOCATION})\s*:",
+    rf"({_LOCATION})\s*:(?!\d)",
     re.IGNORECASE,
 )
 _REGION_NAME = (
@@ -232,24 +236,38 @@ def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
     """Yield reports while keeping a conditional consequence with its premise."""
     for message in messages:
         parts = _OUTAGE_CLAUSE_BREAK.split(message)
+        clauses, delimiters = parts[::2], [*parts[1::2], ""]
         conditional = False
         leading_scope = ""
-        for clause, delimiter, next_clause in zip(parts[::2], [*parts[1::2], ""], [*parts[2::2], ""]):
+        section_scope = ""
+        for index, (clause, delimiter) in enumerate(zip(clauses, delimiters)):
             if not conditional:
-                if leading_scope:
+                heading = _SCOPE_HEADING.match(clause)
+                if heading:
+                    section_scope = heading.group().strip()
+                elif leading_scope:
                     if delimiter == "\n" and not clause.strip():
                         continue
                     clause = f"{leading_scope} {clause.lstrip()}"
                     leading_scope = ""
-                elif (delimiter == "," and _BARE_SCOPE.fullmatch(clause)) or (
-                    delimiter == "\n" and _SCOPE_HEADING.fullmatch(clause.rstrip())
-                ):
+                elif delimiter == "," and _BARE_SCOPE.fullmatch(clause):
                     leading_scope = clause
                     continue
-                if (delimiter in _OUTAGE_CONTINUATIONS and _POSTFIX_CONDITION.match(next_clause)) or (
-                    delimiter.casefold().endswith("but") and _ONLY_IF.match(next_clause)
-                ):
-                    continue
+                elif section_scope and not _LEADING_SCOPE.match(clause):
+                    clause = f"{section_scope} {clause.lstrip()}"
+                if index + 1 < len(clauses):
+                    next_clause = clauses[index + 1]
+                    only_if = _ONLY_IF.match(next_clause)
+                    if only_if and (delimiter in _OUTAGE_CONTINUATIONS or delimiter.casefold().endswith("but")):
+                        continue
+                    if delimiter in _OUTAGE_CONTINUATIONS and _POSTFIX_CONDITION.match(next_clause):
+                        # A complete conditional request attaches its premise to the request itself.
+                        follows_with_request = (
+                            delimiters[index + 1] in _OUTAGE_CONTINUATIONS
+                            and (delimiters[index + 2] == "?" or _REQUEST_START.match(clauses[index + 2]))
+                        )
+                        if not follows_with_request:
+                            continue
                 premise = _HYPOTHETICAL.search(clause)
                 if premise is None:
                     yield clause, delimiter
