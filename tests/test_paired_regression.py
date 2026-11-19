@@ -28,18 +28,22 @@ def run_audit(mock_openai, tmp_path, capsys):
     [("auto_respond", None), ("route_to_specialist", "Technical Support"),
      ("escalate_to_human", "Support Escalation")],
 )
-def test_audit_password_request_is_removed_from_every_final_action(action, team, run_audit):
+@pytest.mark.parametrize(
+    "request_text",
+    ["Please provide us with your password.", "Could you confirm your account password so we can update your email?"],
+    ids=["provide-password", "confirm-password"],
+)
+def test_audit_password_request_is_removed_from_every_final_action(action, team, request_text, run_audit):
     ticket = ticket_for(PAIRS["P08"], "A")
-    request = "Please provide us with your password."
     audit = run_audit(
         ticket, action=action, assigned_team=team,
-        draft_response=request, kb_article_ids=["KB-004"],
+        draft_response=request_text, kb_article_ids=["KB-004"],
     )
 
-    assert audit["proposal"]["draft_response"] == request
+    assert audit["proposal"]["draft_response"] == request_text
     final = audit["result"]
     assert (final["action"], final["assigned_team"]) == (action, team)
-    assert "provide us with your password" not in final["draft_response"].lower()
+    assert request_text not in final["draft_response"]
     if action == "auto_respond":
         assert "auto_response_replaced_with_approved_faq_template" in final["policy_overrides"]
     else:
@@ -73,6 +77,12 @@ def test_audit_preserves_password_warning_on_handoff(action, run_audit):
             ["Everyone in Asia can log in again.", "All users in Asia get HTTP 500 again."],
             ["cannot access"], ["can access the system again"], id="same-region-relapse",
         ),
+        pytest.param(
+            ["All staff in Europe cannot sign in.", "The service in Europe is back online.",
+             "Everyone in Asia can log in again.", "All staff in Europe get HTTP 500 again."],
+            ["users in Asia can access the system again", "latest report for Europe says users could not access"],
+            ["users in Europe can access the system again"], id="relapse-after-two-regions-recover",
+        ),
     ],
 )
 def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, forbidden, run_audit):
@@ -89,6 +99,20 @@ def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, f
         assert fragment.lower() not in draft
 
 
+def test_audit_outage_draft_does_not_merge_different_countries(run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [
+        Message(when="1", text="All employees in Thailand cannot sign in."),
+        Message(when="2", text="All employees in Germany can sign in again."),
+    ]
+    audit = run_audit(ticket, draft_response="Thanks for confirming the outage is resolved.", action="route_to_specialist")
+    draft = audit["result"]["draft_response"].lower()
+
+    assert "users in germany can access the system again" in draft
+    assert "whether access has been restored in thailand remains unconfirmed" in draft
+    assert "users in thailand can access the system again" not in draft
+
+
 @pytest.mark.parametrize(
     "text,is_outage",
     [
@@ -98,6 +122,14 @@ def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, f
         ),
         pytest.param(
             "All users cannot log in. What is the procedure?", True, id="affirmed-before-question",
+        ),
+        pytest.param(
+            "All users in Asia get HTTP 500 right now and I need to know if there is a runbook.",
+            True, id="affirmed-before-coordinated-question",
+        ),
+        pytest.param(
+            "All users get HTTP 500 if the service is down. What is the procedure?",
+            False, id="hypothetical-following-its-consequence",
         ),
     ],
 )

@@ -60,7 +60,8 @@ _MULTI_USER = (
 )
 _OUTAGE_SYMPTOM = "(?:" + "|".join(_OUTAGE_PATTERNS) + ")"
 _LOCATION_WORD = r"(?!(?:no|none|not|never|without|can|cannot|is|are|was|were|has|have|and|or)\b)\w+"
-_SCOPE_LOCATION = rf"(?:\s+(?:in|at)\s+(?:{_LOCATION_WORD}[ -]){{0,3}}{_LOCATION_WORD})?"
+_LOCATION = rf"(?:{_LOCATION_WORD}[ -]){{0,3}}?{_LOCATION_WORD}"
+_SCOPE_LOCATION = rf"(?:\s+(?:in|at|across)\s+{_LOCATION})?"
 _GROUP_REPORT_WORDS = (
     _SCOPE_LOCATION + r"\s*(?:(?:also|still|now|are|is|keep|keeps|get|gets|getting|got|see|sees|seeing|"
     r"reported|report|reports|has|have|having|the|same|hit|affected|by|with|"
@@ -90,6 +91,18 @@ _HYPOTHETICAL = re.compile(
     r"\b(?:what\s+if|if|unless|in\s+case|in\s+the\s+event\s+that|suppose|assuming)\b|ถ้า|หาก|สมมติว่า",
     re.IGNORECASE,
 )
+_COORDINATED_FOLLOWUP = re.compile(
+    r"\b(?:and|then)\s+(?:(?:i|we)\s+(?:(?:need|want)\s+to\s+know|would\s+like\s+to\s+know|wonder)"
+    r"|(?:can|could|should|would)\s+(?:you|we)|what|how|who|where|when)\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_SCOPE = re.compile(
+    rf"(?:{_MULTI_USER}|\b(?:users|employees|staff|system|service|app|site)\b)"
+    rf"\s+(?:in|at|across)\s+({_LOCATION})(?=\s+(?:also|still|now|can|can\s*not|can't|are|is|has|"
+    r"have|cannot|unable|get|gets|getting|got|see|sees|seeing|report|reported|reports|"
+    r"keep|keeps|experience|experiences|experiencing|back|restored)\b)",
+    re.IGNORECASE,
+)
 _REGION_NAME = (
     r"(?:\b(?:asia(?:[- ]pacific)?|apac|europe|eu|north america|south america|africa|oceania|australia)\b"
     r"|เอเชีย|ยุโรป)"
@@ -105,7 +118,7 @@ _ACCESS_RESTORED = (
 _RECOVERY_PATTERNS = (
     r"\b(?:everyone|all\s+(?:our\s+)?(?:users|employees|staff)|the\s+whole\s+team)\b"
     + _SCOPE_LOCATION + _ACCESS_RESTORED,
-    r"\b(?:users|employees|staff)\s+(?:in|across)\s+" + _REGION_NAME + _ACCESS_RESTORED,
+    r"\b(?:users|employees|staff)\s+(?:in|at|across)\s+" + _LOCATION + _ACCESS_RESTORED,
     r"(?:\b(?:system|service|app|site)\b" + _SCOPE_LOCATION + r"|" + _REGION_NAME + r")"
     r"\s+(?:(?:is|has\s+been)\s+)?(?:back\s+up|back\s+online|restored)\b",
     r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)(?:\s*ใน(?:เอเชีย|ยุโรป))?\s*"
@@ -115,6 +128,7 @@ _PASSWORD_REQUESTS = (
     r"\b(?:send|share|provide|give|tell|disclose|submit|reply\s+with)\s+"
     r"(?:(?:with\s+)?(?:us|me|support|(?:our|the)\s+(?:support\s+)?team)(?:\s+with)?\s+)?"
     r"(?:(?:your|the|current|existing|account|login)\s+){0,4}password\b",
+    r"\bconfirm\s+(?:(?:your|the|current|existing|account|login)\s+){0,4}password\b(?!\s+(?:reset|change)\b)",
     r"(?:ส่ง|แชร์|แจ้ง|บอก|ระบุ)(?:\s|มา|ให้|เรา|ทีมงาน|เจ้าหน้าที่){0,8}รหัสผ่าน",
 )
 _PASSWORD_WARNING = re.compile(
@@ -195,20 +209,20 @@ def _floor_urgency(value: str, minimum: str) -> str:
 def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
     """Yield reports while keeping a conditional consequence with its premise."""
     for message in messages:
-        start = 0
+        parts = re.split(f"({_CLAUSE_BREAK.pattern})", message, flags=_CLAUSE_BREAK.flags)
         conditional = False
-        for boundary in _CLAUSE_BREAK.finditer(message):
-            clause = message[start:boundary.start()]
-            delimiter = boundary.group()
-            conditional = conditional or bool(_HYPOTHETICAL.search(clause))
+        for clause, delimiter in zip(parts[::2], [*parts[1::2], ""]):
             if not conditional:
-                yield clause, delimiter
+                premise = _HYPOTHETICAL.search(clause)
+                if premise is None:
+                    yield clause, delimiter
+                else:
+                    conditional = True
+                    followup = _COORDINATED_FOLLOWUP.search(clause, 0, premise.start())
+                    if followup:
+                        yield clause[:followup.start()], "."
             if delimiter not in {",", ";"}:
                 conditional = False
-            start = boundary.end()
-        clause = message[start:]
-        if not conditional and not _HYPOTHETICAL.search(clause):
-            yield clause, ""
 
 
 class _OutageEvidence(NamedTuple):
@@ -222,7 +236,7 @@ def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
     recovered: set[str | None] = set()
     symptom_reported = False
     for clause, delimiter in _outage_clauses(messages):
-        names = re.findall(_REGION_NAME, clause, re.IGNORECASE)
+        names = _EXPLICIT_SCOPE.findall(clause) or re.findall(_REGION_NAME, clause, re.IGNORECASE)
         regions = {_REGION_NAMES.get(name.casefold(), name.title()) for name in names}
         region = next(iter(regions)) if len(regions) == 1 else None
         if delimiter != "?" and any(_affirmed_pattern(clause, pattern) for pattern in _RECOVERY_PATTERNS):
@@ -272,6 +286,7 @@ def _outage_draft(outage: _OutageEvidence) -> str:
         scope = f"in {unresolved}" if None not in outage.unresolved else "for the affected users"
         return (
             f"You reported that users in {recovered} can access the system again. "
+            f"Your latest report for {unresolved or 'the affected users'} says users could not access the system. "
             f"Whether access has been restored {scope} remains unconfirmed. "
             "We are escalating your report to our incident team for urgent investigation."
         )

@@ -2,7 +2,7 @@
 
 ตรวจวันที่ 19 พฤศจิกายน 2026 ที่ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` ผลหลังแก้วัดจาก working tree ที่ส่งมอบบน baseline นี้ การประมวลผลจริงยังใช้ GPT ผ่าน OpenAI Responses API
 
-**Offline รอบแรก 153 tests ผ่าน** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแก้ตามผลตรวจ Research เทียบกับ `cdef161a32ed51d802ef80a6ff2fdc4239fad7d7` แล้วผ่าน **165 tests** ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
+**Offline รอบแรก 153 tests ผ่าน** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแก้เทียบกับ `cdef161` ผ่าน **165 tests** และรอบแก้สำนวนเพิ่มจาก Research ผ่าน **172 tests** ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
@@ -43,7 +43,7 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 
 ### ตรวจซ้ำตามผลรีวิว PR #5
 
-ชุดใหม่ใช้ข้อเสนอจำลองจาก OpenAI แล้วตรวจทั้ง `proposal` และ `result` ใน `--audit` เดียวกัน เทสต์ชุดเดียวกันตก **4** และผ่าน **8** บน `cdef161` จากนั้นผ่าน **12/12** หลังแก้
+ชุดใหม่ใช้ข้อเสนอจำลองจาก OpenAI แล้วตรวจทั้ง `proposal` และ `result` ใน `--audit` เดียวกัน เทสต์ชุดแรกตก **4** และผ่าน **8** บน `cdef161` จากนั้นผ่าน **12/12** บน `ecf480a` เมื่อเพิ่มสำนวนที่ Research ใช้ตรวจอิสระ ชุดขยายตก **5** และผ่าน **14** กับ Policy ของ `ecf480a` หลังแก้เพิ่มผ่าน **19/19**
 
 | เคส | ก่อนแก้ | หลังแก้ |
 | --- | --- | --- |
@@ -53,6 +53,10 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | Asia ยืนยันว่ากู้คืนเอง / Asia กู้คืนแล้วล่มซ้ำ | ทั้งสองเคสควบคุมสื่อสถานะล่าสุดถูกต้อง | ร่างสื่อการกู้คืนและการล่มซ้ำตามลำดับข้อความ เกณฑ์ urgency หลังการกู้คืนเป็น `pending` |
 | `If the service is down, all users cannot log in. What is the procedure?` | Policy ยกระดับเป็น `critical / escalate_to_human` | คงข้อเสนอจำลอง `low / route_to_specialist` |
 | `All users cannot log in. What is the procedure?` | ผ่าน | ยังยกระดับเป็น `critical / escalate_to_human` ไป Infrastructure / On-call |
+| `Could you confirm your account password so we can update your email?` | หลุดในร่างส่งต่อทั้งสอง action บน `ecf480a` | แทนด้วยคำเตือนและคง action กับทีมที่เสนอ |
+| พนักงานใน Thailand เข้าไม่ได้ แล้วพนักงานใน Germany กลับเข้าได้ | ร่างยืนยันการกู้คืนแบบไม่ระบุขอบเขตบน `ecf480a` | ระบุว่า Germany กลับเข้าได้ และการกู้คืนใน Thailand ยังไม่ยืนยัน |
+| Asia และ Europe ต่างยืนยันว่ากู้คืนแล้ว ต่อมา Europe แจ้ง HTTP 500 อีก | บน `ecf480a` ร่างระบุเพียงว่ายังไม่ยืนยันการกู้คืนใน Europe | ร่างเก็บการกู้คืนใน Asia และบอกว่ารายงานล่าสุดจาก Europe คือเข้าใช้งานไม่ได้ |
+| `All users in Asia get HTTP 500 right now and I need to know if there is a runbook.` | `ecf480a` คงข้อเสนอ `low / route_to_specialist` ผิด | ยกระดับเป็น `critical / escalate_to_human` ไป Infrastructure / On-call ส่วน `All users get HTTP 500 if the service is down.` ยังคงเป็นกรณีสมมติ |
 
 รันซ้ำด้วย `python -m pytest -q tests/test_paired_regression.py -k audit` เกณฑ์ P04–P07 มี **18 ข้อที่ประเมินได้** โดยตัด field ที่เป็น `pending` ออกจากตัวส่วน ยังไม่มีการให้คะแนนจาก GPT จริง [เกณฑ์ให้คะแนนราย A/B](paired-scoring-rubric.md)
 
@@ -97,7 +101,7 @@ python -m evaluation.banking77 verify
 python -m evaluation.paired probe
 ```
 
-`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน การทำซ้ำผลก่อนแก้ตาม Research ใช้ PowerShell โหลด Policy บน `cdef161` เข้าหน่วยความจำแล้วรัน CLI กับข้อเสนอจำลองชุดเดียวกัน สำหรับผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ให้เปลี่ยน `revision` เป็น `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
+`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน การทำซ้ำผลสำนวนเพิ่มก่อนแก้ใช้ PowerShell โหลด Policy ของ `ecf480a` เข้าหน่วยความจำแล้วรัน CLI กับข้อเสนอจำลองชุดขยาย สำหรับผล **4 ตก / 8 ผ่าน** ให้ใช้เทสต์ที่ `ecf480a` แล้วตั้ง `revision` เป็น `cdef161a32ed51d802ef80a6ff2fdc4239fad7d7` ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
 
 ```powershell
 @'
@@ -107,7 +111,7 @@ from types import ModuleType
 import pytest
 from triage_agent import agent
 
-revision = "cdef161a32ed51d802ef80a6ff2fdc4239fad7d7"
+revision = "ecf480a313a8fb85e09f87775948851df699cc48"
 path = "src/triage_agent/policy.py"
 baseline = ModuleType("triage_agent.baseline_policy")
 source = subprocess.check_output(["git", "show", f"{revision}:{path}"])
