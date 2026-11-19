@@ -47,6 +47,41 @@ def test_enterprise_error500_escalates_even_when_green_status(tickets):
     assert "regional scope" in result.draft_response
 
 
+
+@pytest.mark.parametrize('message,broad_outage', [
+    pytest.param('All users get HTTP 500.', True, id='group-first'),
+    pytest.param('HTTP 500 affects all users.', True, id='affects'),
+    pytest.param('HTTP 500 is affecting all users.', True, id='is-affecting'),
+    pytest.param(
+        "I don't think HTTP 500 affects all users. Only I get the error.", False, id='doubt-about-scope',
+    ),
+    pytest.param(
+        'HTTP 500 affects all users? Everyone can log in.', False, id='asks-about-scope',
+    ),
+    pytest.param(
+        'HTTP 500 affects all our users. Can you check?', True, id='affirmed-before-question',
+    ),
+])
+def test_broad_outage_overrides_simulated_low_auto_respond_proposal(tickets, message, broad_outage):
+    ticket = tickets['TICKET-002'].model_copy(update={'messages': [Message(when='now', text=message)]})
+    tools = ToolRegistry(ticket)
+    tools.call('get_customer_history', {'customer_id': ticket.customer.customer_id})
+    tools.call('search_knowledge_base', {'query': 'HTTP 500'})
+    assert [call.name for call in tools.trace if call.ok] == [
+        'get_customer_history', 'search_knowledge_base',
+    ]
+
+    proposal = mock_proposal(urgency='low', action='auto_respond')
+    result = finalize(ticket, proposal, tools, 'live_gpt')
+
+    if broad_outage:
+        assert (result.urgency, result.action, result.assigned_team) == (
+            'critical', 'escalate_to_human', 'Infrastructure / On-call',
+        )
+    else:
+        assert result.urgency != 'critical'
+
+
 def test_dark_bug_needs_specialist(tickets):
     t = tickets["TICKET-003"]
     result = finalize(t, mock_proposal(urgency="low"), ToolRegistry(t), "demo_rules")
