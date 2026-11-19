@@ -159,20 +159,52 @@ python -m triage_agent --mode live --ticket-file my_ticket.json
 
 ```mermaid
 flowchart TD
-    A[Customer profile + chronological messages] --> B[GPT Responses API agent]
-    B --> C[Read-only function tools]
-    C --> D[Mock profile / KB / billing / status]
-    D --> B
-    B --> E[Strict structured JSON + Pydantic]
-    E --> F[Deterministic safety policy]
-    F --> G{Next action}
-    G --> H[Auto-respond draft]
-    G --> I[Route to specialist]
-    G --> J[Human escalation]
-    F --> K[JSON result + tool trace]
+    A[CLI validates profile and message thread] --> B{Mode}
+    B -->|live| C[OpenAI Responses API]
+    B -->|typhoon| D[Typhoon Chat Completions]
+    B -->|demo| E[Python rules]
+    C <--> T[Read-only tools]
+    D <--> T
+    E <--> T
+    C --> P[Validated proposal]
+    D --> P
+    E --> P
+    P --> F[Shared Python policy]
+    F --> G[JSON decision, assigned team and draft]
 ```
 
-Two mandatory tool calls are explicitly requested through `tool_choice`, first `get_customer_history`, then `search_knowledge_base`. The model may invoke billing or status tools before returning its structured proposal. The resulting proposal is always checked by `finalize()`; policy can **raise urgency and escalate**, reject invented KB references and prevent unsafe auto-responses. It cannot make a refund or outage diagnosis true.
+### How a ticket is judged
+
+In live mode, the [system prompt](src/triage_agent/prompts/system.md) asks the model to read the whole conversation and weigh impact, breadth, time pressure and how the problem develops. It recommends **critical** for widespread outages or major business interruption, **high** for repeated charges, disputes or major access problems, **medium** for defects with partial usability, and **low** for routine questions or nonurgent suggestions. Anger alone does not establish critical urgency. The model proposes the product, issue types, sentiment, urgency, action and team. The [schema](src/triage_agent/models.py) checks the shape and allowed values. The policy below decides which parts of the proposal can stand.
+
+Both model adapters require a successful customer history lookup followed by a KB search. Billing and regional status lookups are optional model choices. KB retrieval counts matching keywords in the local [FAQ catalog](src/triage_agent/data/kb.json) and returns up to three articles with IDs and excerpts as evidence. The [sample tickets](src/triage_agent/data/tickets.json) and [edge cases](evaluation/adversarial_cases.json) supply inputs and evaluation expectations. They do not train the model or assign a decision to a new ticket.
+
+**Incident rules, in priority order.** A minimum urgency preserves a higher proposed urgency. The first matching row determines the incident-specific handling. The final action rules below then apply to every ticket. See the exact English and Thai patterns in [policy.py](src/triage_agent/policy.py).
+
+| Condition in the ticket thread | Urgency and handoff |
+|---|---|
+| Multiple people are reported to have the same access failure, outage or HTTP 500. A follow-up such as “my coworkers get the same error” can establish scope. | Set `critical`, `escalate_to_human`, Infrastructure / On-call. If a billing dispute or repeated charge also matches, keep Infrastructure as owner and flag Billing review in the draft. |
+| Repeated charges, chargeback or a refund dispute, including a refund denial followed by an appeal. A refund-status inquiry alone does not trigger this rule. | At least `high`. Force `escalate_to_human` to Billing Support. Leave settlement and refund status unconfirmed. |
+| A message mentions “dark mode” and a recognized defect phrase, without a recognized third-party reference in that message. | At least `medium`. Convert an automatic reply to a specialist route. Specialist routes go to Product Support. A separate scheduling request adds an uncertainty when the scheduling phrase matches. |
+| An individual access failure or an unsuccessful payment or upgrade. | At least `medium`. Convert an automatic reply to a specialist route. Access goes to Technical Support and payment goes to Billing Support. Access takes priority when both match. |
+| No incident rule matches. | Live modes keep the model proposal subject to the final checks. Demo proposes a `low` general question and an automatic reply, also subject to those checks. |
+
+**Scope changes the decision.** “HTTP 500 affects all users” triggers the outage rule. “I get HTTP 500. Everyone else can log in” triggers the individual access rule. “No HTTP 500 occurred. Everyone can log in” triggers neither. The patterns check selected negations, contrast clauses and follow-up reports. The “affects / is affecting” pattern also checks whether the clause is a question or a denied belief. Seat count and a green public status do not establish how many customers are affected. [Outage regression cases](tests/test_e2e_regression.py)
+
+**Demo proposals.** The offline agent assigns product, issue types and sentiment with fixed branches. It looks up billing for a matched billing risk and regional status for a matched outage, including both checks when both apply. For example, a group outage yields `access_failure` and adds `http_500` when explicitly reported. A dark-mode defect yields `appearance_bug` and can also yield `feature_request`. Live extraction comes from the model. [Demo and GPT implementations](src/triage_agent/agent.py)
+
+**Final action rules.** Citation filtering happens before incident handling. The remaining checks use the urgency and action after incident handling.
+
+| Condition | Final behavior |
+|---|---|
+| A proposed citation was never returned by a successful KB search, or is duplicated | Remove unknown IDs and duplicates. Retain the Appearance FAQ (`KB-003`) only for an affirmed appearance topic. |
+| `critical` with any action other than human escalation | Force `escalate_to_human` to Support Escalation. Existing escalations keep their assigned team. |
+| `high` or `medium` still proposes `auto_respond` | High escalates to Support Escalation. Medium routes to General Support. A high specialist route can stand when no incident rule forces escalation. |
+| `low / auto_respond` | Use the first approved, retained FAQ template and cite only its article. `KB-003` gives Appearance guidance and `KB-004` asks for clarification. If neither is available or any recorded tool call failed, route to General Support. |
+| A handoff has no assigned team | Assign General Support. Other surviving proposals keep their action and team. |
+| Invalid input, provider error, unsuccessful required model tool call, invalid final proposal or exhausted model rounds | Stop with a CLI error instead of emitting a successful batch. The model loop defaults to eight rounds. |
+
+The JSON records successful tool names in `tools_used` and policy reason codes in `policy_overrides`. The optional full trace includes arguments, results and failures. Human handoffs produce drafts for staff review. Only the automatic reply path guarantees an approved FAQ template.
 
 ### Tool inventory
 
