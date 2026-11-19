@@ -32,8 +32,10 @@ def run_audit(mock_openai, tmp_path, capsys):
     "request_text",
     ["Please provide us with your password.", "Could you confirm your account password so we can update your email?",
      "What is the password you use to sign in?", "May I have your account password so I can troubleshoot?",
-     "Reset your password. Then send it to us."],
-    ids=["provide-password", "confirm-password", "ask-for-password", "ask-to-have-password", "disclosure-after-reset"],
+     "Reset your password. Then send it to us.", "Reset your password. Then email it to our support team.",
+     "Never share your password, except with support."],
+    ids=["provide-password", "confirm-password", "ask-for-password", "ask-to-have-password", "disclosure-after-reset",
+         "email-after-reset", "warning-with-exception"],
 )
 def test_audit_password_request_is_removed_from_every_final_action(action, team, request_text, run_audit):
     ticket = ticket_for(PAIRS["P08"], "A")
@@ -55,8 +57,9 @@ def test_audit_password_request_is_removed_from_every_final_action(action, team,
 
 @pytest.mark.parametrize("action", ["route_to_specialist", "escalate_to_human"])
 @pytest.mark.parametrize(
-    "draft", ["Please never share your password.", "You can reset your password from your account settings."],
-    ids=["warning", "self-service-reset"],
+    "draft", ["Please never share your password.", "You can reset your password from your account settings.",
+              "Change your login password in your account settings. Never reveal your password."],
+    ids=["warning", "self-service-reset", "self-service-and-warning"],
 )
 def test_audit_preserves_safe_password_guidance_on_handoff(action, draft, run_audit):
     ticket = ticket_for(PAIRS["P08"], "B")
@@ -111,8 +114,11 @@ def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, f
         ("In Singapore all employees cannot sign in.", "In Japan all staff can sign in again.", "Singapore", "Japan"),
         ("In Singapore, all employees cannot sign in.", "In Japan, all staff can sign in again.", "Singapore", "Japan"),
         ("Singapore: all employees cannot sign in.", "Japan: all staff can sign in again.", "Singapore", "Japan"),
+        ("Cebu office: currently all staff cannot sign in.", "Taipei office: now all staff can sign in again.",
+         "Cebu office", "Taipei office"),
     ],
-    ids=["location-after-group", "location-before-group", "location-before-group-with-comma", "location-as-heading"],
+    ids=["location-after-group", "location-before-group", "location-before-group-with-comma", "location-as-heading",
+         "location-heading-with-time-modifier"],
 )
 def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery, affected, recovered, run_audit):
     ticket = ticket_for(PAIRS["P12"], "A")
@@ -149,6 +155,14 @@ def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery,
         pytest.param(
             "All users in Europe get HTTP 500 and please advise if we should page on-call.",
             True, id="affirmed-before-coordinated-request-for-advice",
+        ),
+        pytest.param(
+            "All users in Europe are getting HTTP 500 right now - can you check if we should page on-call?",
+            True, id="affirmed-before-dashed-question",
+        ),
+        pytest.param(
+            "If the system goes down — all staff cannot log in. Who is on-call?",
+            False, id="hypothetical-across-dash",
         ),
         pytest.param(
             "All users get HTTP 500 if the service is down. What is the procedure?",

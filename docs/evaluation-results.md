@@ -2,7 +2,7 @@
 
 ตรวจวันที่ 19 พฤศจิกายน 2026 ที่ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` ผลหลังแก้วัดจาก working tree ที่ส่งมอบบน baseline นี้ การประมวลผลจริงยังใช้ GPT ผ่าน OpenAI Responses API
 
-**Offline ล่าสุดผ่าน 188 tests** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแรกผ่าน 153 tests และรอบแก้ที่ผ่านมาได้ 165, 172 และ 178 tests ตามลำดับ ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
+**Offline ล่าสุดผ่าน 199 tests** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแรกผ่าน 153 tests ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
@@ -50,7 +50,8 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | `cdef161` | ตก 4 / ผ่าน 8 | ผ่าน 12/12 บน `ecf480a` |
 | `ecf480a` | ตก 5 / ผ่าน 14 | ผ่าน 19/19 บน `af77181` |
 | `af77181` | ตก 5 / ผ่าน 20 | ผ่าน 25/25 บน `75eb622` |
-| `75eb622` | ตก 6 / ผ่าน 29 | ผ่าน 35/35 ล่าสุด |
+| `75eb622` | ตก 6 / ผ่าน 29 | ผ่าน 35/35 บน `2ac71d2` |
+| `2ac71d2` | ตก 6 / ผ่าน 40 | ผ่าน 46/46 ล่าสุด |
 
 | เคส | ก่อนแก้ | หลังแก้ |
 | --- | --- | --- |
@@ -70,6 +71,9 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | `May I have your account password so I can troubleshoot?` และ `Reset your password. Then send it to us.` | `75eb622` ส่งทั้งสองข้อความผ่าน specialist และ human escalation | ใช้ร่างเตือนและคง action กับทีม คำเตือนตรง ๆ และคำแนะนำให้รีเซ็ตในบัญชีด้วยตนเองยังคงอยู่ในเคสควบคุม |
 | `Singapore: all employees cannot sign in.` แล้ว `Japan: all staff can sign in again.` | `75eb622` ยืนยันกู้คืนแบบรวม | ร่างระบุว่า Japan กลับเข้าได้ สถานะการกู้คืนใน Singapore ยังไม่ยืนยัน |
 | `All users in Europe get HTTP 500 and please advise if we should page on-call.` | `75eb622` คง `low / route_to_specialist` ผิด | แยกรายงานเหตุออกจากคำขอให้แนะนำขั้นตอนและยกระดับไป Infrastructure / On-call |
+| `Reset your password. Then email it to our support team.` และ `Never share your password, except with support.` | `2ac71d2` ส่งทั้งสองร่างผ่าน specialist และ human escalation | ร่างที่กล่าวถึงรหัสผ่านคงได้เมื่อทุกประโยคเป็นคำเตือนหรือคำแนะนำจัดการรหัสผ่านด้วยตนเองที่ Policy รองรับ กรณีอื่นใช้คำเตือนมาตรฐานและคง action กับทีม |
+| `Cebu office: currently all staff cannot sign in.` แล้ว `Taipei office: now all staff can sign in again.` | `2ac71d2` ยืนยันการกู้คืนแบบรวม | ร่างแยกว่า Taipei กลับเข้าได้และยังไม่ยืนยันการกู้คืนของ Cebu |
+| `All users in Europe are getting HTTP 500 right now - can you check if we should page on-call?` | `2ac71d2` หลุดการยกระดับ | รายงานเหตุจริงก่อนขีดถูกยกระดับ ส่วนเงื่อนไข `If the system goes down — all staff cannot log in.` ไม่เข้าเกณฑ์ |
 
 รันซ้ำด้วย `python -m pytest -q tests/test_paired_regression.py -k audit` เกณฑ์ P04–P07 มี **18 ข้อที่ประเมินได้** โดยตัด field ที่เป็น `pending` ออกจากตัวส่วน ยังไม่มีการให้คะแนนจาก GPT จริง [เกณฑ์ให้คะแนนราย A/B](paired-scoring-rubric.md)
 
@@ -114,7 +118,7 @@ python -m evaluation.banking77 verify
 python -m evaluation.paired probe
 ```
 
-`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน คำสั่ง PowerShell ด้านล่างโหลด Policy ของ `75eb622` แล้ว replay เทสต์ล่าสุดเพื่อได้ผล **6 ตก / 29 ผ่าน** สำหรับแถวก่อนหน้าให้ใช้ชุดเทสต์บน SHA ในคอลัมน์หลังแก้และตั้ง `revision` เป็น SHA ในคอลัมน์ก่อนแก้ ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
+`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน คำสั่ง PowerShell ด้านล่างโหลด Policy ของ `2ac71d2` แล้ว replay เทสต์ล่าสุดเพื่อได้ผล **6 ตก / 40 ผ่าน** สำหรับแถวก่อนหน้าให้ใช้ชุดเทสต์บน SHA ในคอลัมน์หลังแก้และตั้ง `revision` เป็น SHA ในคอลัมน์ก่อนแก้ ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
 
 ```powershell
 @'
@@ -124,7 +128,7 @@ from types import ModuleType
 import pytest
 from triage_agent import agent
 
-revision = "75eb622274fc48d0a8375543206bbfb1c514643c"
+revision = "2ac71d2bd5deb9e258b9d58d0401524775b16bb3"
 path = "src/triage_agent/policy.py"
 baseline = ModuleType("triage_agent.baseline_policy")
 source = subprocess.check_output(["git", "show", f"{revision}:{path}"])
