@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from triage_agent.agent import DemoTriageAgent, load_tickets
+from triage_agent.agent import GPTTriageAgent, load_tickets
 from triage_agent.cli import main
 from triage_agent.models import Customer, Message, Ticket
 
@@ -23,10 +23,12 @@ def edge_ticket(case_id: str, text: str) -> Ticket:
 
 
 @pytest.mark.parametrize('case', CASES, ids=lambda c: c['id'])
-def test_all_edge_fixtures_through_actual_cli(case, tmp_path, capsys):
+def test_all_edge_fixtures_through_actual_cli(case, mock_openai, tmp_path, capsys):
+    ticket = edge_ticket(case['id'], case['text'])
+    mock_openai.queue(ticket, query=case['text'])
     source = tmp_path / 'ticket.json'
-    source.write_text(json.dumps(edge_ticket(case['id'], case['text']).model_dump(), ensure_ascii=False), encoding='utf-8')
-    assert main(['--mode', 'demo', '--ticket-file', str(source), '--no-trace']) == 0
+    source.write_text(ticket.model_dump_json(), encoding='utf-8')
+    assert main(['--ticket-file', str(source), '--no-trace']) == 0
     result = json.loads(capsys.readouterr().out)[0]
     assert result['urgency'] == case['expected_urgency']
     if case['expected_action'] is not None:
@@ -35,9 +37,11 @@ def test_all_edge_fixtures_through_actual_cli(case, tmp_path, capsys):
 
 
 @pytest.mark.parametrize('case_id,used_article', [('EDGE-006', 'KB-004'), ('EDGE-009', 'KB-003')])
-def test_auto_response_only_cites_its_approved_article(case_id, used_article):
+def test_auto_response_only_cites_its_approved_article(case_id, used_article, mock_openai):
     case = next(candidate for candidate in CASES if candidate['id'] == case_id)
-    result = DemoTriageAgent().run(edge_ticket(case_id, case['text']))
+    ticket = edge_ticket(case_id, case['text'])
+    mock_openai.queue(ticket, query=case['text'], kb_article_ids=['KB-001', 'KB-003', 'KB-004'])
+    result = GPTTriageAgent().run(ticket)
 
     assert (result.urgency, result.action) == ('low', 'auto_respond')
     assert result.kb_article_ids == [used_article]
@@ -50,8 +54,10 @@ def test_auto_response_only_cites_its_approved_article(case_id, used_article):
     ('en-outage', 'No HTTP 500 errors occurred. Everyone can log in.'),
     ('mixed-billing', 'ไม่มีการเรียกเก็บเงินซ้ำ / no duplicate charges. ขอ guide'),
 ])
-def test_multilingual_negation_does_not_trigger_emergency(language, text):
-    result = DemoTriageAgent().run(edge_ticket(language, text))
+def test_multilingual_negation_does_not_trigger_emergency(language, text, mock_openai):
+    ticket = edge_ticket(language, text)
+    mock_openai.queue(ticket)
+    result = GPTTriageAgent().run(ticket)
     assert result.urgency == 'low'
     assert result.action in {'auto_respond', 'route_to_specialist'}
 
@@ -62,8 +68,10 @@ def test_multilingual_negation_does_not_trigger_emergency(language, text):
     ('There were no errors yesterday, but now our entire company cannot access production. System is down.', 'critical'),
     ('ไม่มี error 500 เมื่อวาน แต่ตอนนี้ทั้งองค์กรเข้าใช้งานไม่ได้', 'critical'),
 ])
-def test_affirmed_incidents_still_escalate(text, urgency):
-    result = DemoTriageAgent().run(edge_ticket('positive', text))
+def test_affirmed_incidents_still_escalate(text, urgency, mock_openai):
+    ticket = edge_ticket('positive', text)
+    mock_openai.queue(ticket)
+    result = GPTTriageAgent().run(ticket)
     assert result.urgency == urgency
     assert result.action == 'escalate_to_human'
 
@@ -71,7 +79,7 @@ def test_affirmed_incidents_still_escalate(text, urgency):
 def test_empty_input_is_rejected_without_success_message(tmp_path, capsys):
     source = tmp_path / 'empty.json'
     source.write_text('[]', encoding='utf-8')
-    assert main(['--mode', 'demo', '--ticket-file', str(source)]) == 2
+    assert main(['--ticket-file', str(source)]) == 2
     streams = capsys.readouterr()
     assert 'No tickets to process' in streams.err
     assert streams.out == ''
@@ -80,7 +88,7 @@ def test_empty_input_is_rejected_without_success_message(tmp_path, capsys):
 def test_invalid_batch_fails_atomically(tmp_path, capsys):
     source = tmp_path / 'batch.json'
     source.write_text(json.dumps([load_tickets()[0].model_dump(), {'bad':'input'}]), encoding='utf-8')
-    assert main(['--mode', 'demo', '--ticket-file', str(source)]) == 2
+    assert main(['--ticket-file', str(source)]) == 2
     assert capsys.readouterr().out == ''
 
 
@@ -89,28 +97,27 @@ def test_invalid_batch_fails_atomically(tmp_path, capsys):
     ('ชำระเงินไม่สำเร็จครับ ช่วยตรวจสอบให้ด้วย', 'Billing Support'),
     ('I cannot log in and see an HTTP 500 error.', 'Technical Support'),
 ])
-def test_individual_failure_is_routed_not_auto_closed(text, team):
-    result = DemoTriageAgent().run(edge_ticket('single-issue', text))
+def test_individual_failure_is_routed_not_auto_closed(text, team, mock_openai):
+    ticket = edge_ticket('single-issue', text)
+    mock_openai.queue(ticket)
+    result = GPTTriageAgent().run(ticket)
     assert result.urgency == 'medium'
     assert result.action == 'route_to_specialist'
     assert result.assigned_team == team
 
 
-@pytest.mark.parametrize('message,http_500_reported', [
-    ('ระบบเข้าไม่ได้ครับ ขึ้น error 500', True),
-    ('เข้าระบบไม่ได้ครับ ขึ้น error 500', True),
-    ('ใช้งานไม่ได้ครับ ขึ้น error 500', True),
-    ('ระบบเข้าไม่ได้ครับ ไม่ได้ขึ้น error 500', False),
+@pytest.mark.parametrize('message,urgency,action', [
+    ('ระบบเข้าไม่ได้ครับ ขึ้น error 500 for all employees', 'critical', 'escalate_to_human'),
+    ('เข้าระบบไม่ได้ครับ ขึ้น error 500 for all employees', 'critical', 'escalate_to_human'),
+    ('ใช้งานไม่ได้ครับ ขึ้น error 500 for all employees', 'critical', 'escalate_to_human'),
+    ('ระบบเข้าไม่ได้ครับ ไม่ได้ขึ้น error 500 for all employees', 'medium', 'route_to_specialist'),
 ], ids=['access', 'system-access', 'usage', 'explicitly-negated-500'])
-def test_thai_access_failure_preserves_separate_http_500_evidence(message, http_500_reported):
+def test_thai_access_failure_preserves_separate_http_500_evidence(message, urgency, action, mock_openai):
     ticket = edge_ticket('thai-http-500', message)
-    ticket.messages.append(Message(when='later', text='เพื่อนร่วมงานก็เข้าไม่ได้เหมือนกัน'))
+    mock_openai.queue(ticket)
+    result = GPTTriageAgent().run(ticket)
 
-    result = DemoTriageAgent().run(ticket)
-
-    assert result.urgency == 'critical'
-    assert 'access_failure' in result.issue_types
-    assert ('http_500' in result.issue_types) == http_500_reported
+    assert (result.urgency, result.action) == (urgency, action)
 
 
 @pytest.mark.parametrize('messages,urgency,action,team', [
@@ -137,18 +144,16 @@ def test_thai_access_failure_preserves_separate_http_500_evidence(message, http_
     (['All users and employees cannot sign in.'], 'critical', 'escalate_to_human', 'Infrastructure / On-call'),
     (['Billing denied my refund.', 'I dispute that decision.'], 'high', 'escalate_to_human', 'Billing Support'),
 ])
-def test_cli_distinguishes_affirmed_incidents_from_unrelated_context(messages, urgency, action, team, tmp_path, capsys):
+def test_cli_distinguishes_affirmed_incidents_from_unrelated_context(messages, urgency, action, team, mock_openai, tmp_path, capsys):
     ticket = edge_ticket('context', messages[0])
     ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    mock_openai.queue(ticket)
     source = tmp_path / 'context.json'
     source.write_text(ticket.model_dump_json(), encoding='utf-8')
 
     assert main(['--ticket-file', str(source), '--no-trace']) == 0
     result = json.loads(capsys.readouterr().out)[0]
     assert (result['urgency'], result['action'], result['assigned_team']) == (urgency, action, team)
-
-
-
 @pytest.mark.parametrize(
     'message,urgency,action,team',
     [
@@ -194,16 +199,16 @@ def test_cli_distinguishes_affirmed_incidents_from_unrelated_context(messages, u
         ),
     ],
 )
-def test_cli_outage_impact_controls_routing_and_status_tool(
-    tickets, message, urgency, action, team, tmp_path, capsys,
+def test_cli_outage_impact_controls_routing(
+    tickets, message, urgency, action, team, mock_openai, tmp_path, capsys,
 ):
     ticket = tickets['TICKET-002'].model_copy(update={'messages': [Message(when='now', text=message)]})
+    mock_openai.queue(ticket, query='HTTP 500 access')
     source = tmp_path / 'impact.json'
     source.write_text(ticket.model_dump_json(), encoding='utf-8')
 
-    assert main(['--mode', 'demo', '--ticket-file', str(source)]) == 0
+    assert main(['--ticket-file', str(source)]) == 0
     result = json.loads(capsys.readouterr().out)[0]
-    status_calls = [call for call in result['tool_trace'] if call['name'] == 'check_system_status']
 
     if urgency is None:
         assert result['urgency'] != 'critical'
@@ -214,37 +219,48 @@ def test_cli_outage_impact_controls_routing_and_status_tool(
     elif urgency == 'low':
         assert result['action'] != 'escalate_to_human'
 
-    if urgency == 'critical':
-        assert any(call['ok'] for call in status_calls)
-    else:
-        assert not status_calls
 
-
-def test_joint_incident_checks_billing_and_status_without_inventing_incident_details():
+def test_joint_incident_handoff_flags_billing_without_inventing_incident_details(mock_openai):
     ticket = edge_ticket('joint', 'My card was charged twice. Our entire company cannot access production.')
     ticket.customer.region = 'Europe'
-    result = DemoTriageAgent().run(ticket)
+    mock_openai.queue(ticket)
+    result = GPTTriageAgent().run(ticket)
 
     assert result.urgency == 'critical'
     assert result.assigned_team == 'Infrastructure / On-call'
-    assert set(result.issue_types) == {'access_failure', 'repeated_charges_reported'}
-    assert {'check_billing_status', 'check_system_status'} <= set(result.tools_used)
-    assert result.tool_trace[-1].arguments == {'region': 'Europe'}
     assert 'Billing Support' in result.draft_response
     assert 'Asia' not in result.draft_response
-    assert 'demo' not in result.summary.lower()
+    assert 'Bank charges and refunds not verified' in result.uncertainties
 
 
-def test_long_ticket_keeps_late_billing_evidence():
-    text = 'Could you send me the guide? ' * 100 + 'But now my card was charged twice.'
-    result = DemoTriageAgent().run(edge_ticket('long', text))
+@pytest.mark.parametrize('request_status', [False, True])
+def test_optional_status_is_dispatched_only_when_the_model_requests_it(tickets, mock_openai, request_status):
+    ticket = tickets['TICKET-002']
+    calls = [('check_system_status', {'region': 'Asia'})] if request_status else []
+    mock_openai.queue(ticket, optional_calls=calls)
+
+    result = GPTTriageAgent().run(ticket)
+
+    events = [event for event in result.tool_trace if event.name == 'check_system_status']
+    assert len(events) == int(request_status)
+    if request_status:
+        assert events[0].ok and events[0].result['status']['public_status'] == 'operational'
+        assert mock_openai.create.call_args.kwargs['input'][-1]['call_id'] == 'TICKET-002-2'
+
+
+def test_long_ticket_keeps_late_billing_evidence(mock_openai):
+    ticket = edge_ticket('long', 'Could you send me the guide? ' * 100 + 'But now my card was charged twice.')
+    mock_openai.queue(ticket, query='duplicate charge')
+    result = GPTTriageAgent().run(ticket)
     assert result.urgency == 'high'
     assert result.action == 'escalate_to_human'
-    kb_trace = next(event for event in result.tool_trace if event.name == 'search_knowledge_base')
-    assert kb_trace.ok and len(kb_trace.arguments['query']) <= 2000
+    payload = mock_openai.create.call_args_list[0].kwargs['input'][0]['content']
+    assert json.loads(payload) == ticket.model_dump()
 
 
-def test_refund_status_question_is_not_a_refund_dispute():
-    result = DemoTriageAgent().run(edge_ticket('refund-question', 'How can I check the status of my refund?'))
+def test_refund_status_question_is_not_a_refund_dispute(mock_openai):
+    ticket = edge_ticket('refund-question', 'How can I check the status of my refund?')
+    mock_openai.queue(ticket)
+    result = GPTTriageAgent().run(ticket)
     assert result.urgency == 'low'
-    assert 'check_billing_status' not in result.tools_used
+    assert result.action != 'escalate_to_human'

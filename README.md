@@ -15,7 +15,7 @@ An AI agent that reads an **entire chronological customer-support ticket**, inve
 | Search knowledge base for relevant **FAQs/docs** | `search_knowledge_base`, scored keyword retrieval of mock articles | `tests/test_tools.py` |
 | Choose **auto-respond / route to specialist / escalate to human** | `Action` constrained type + deterministic safety policy | `tests/test_policy.py` |
 | Use **at least two tools** | GPT is forced to invoke `get_customer_history`, then `search_knowledge_base`; optional billing/status tools | `tests/test_agent.py` verifies function calls and returned tool results |
-| Working code on supplied tickets | CLI with three verbatim chronological threads | `python -m triage_agent --mode demo --all` |
+| Working code on supplied tickets | CLI with three verbatim chronological threads | `python -m triage_agent --all` |
 | System prompt | `src/triage_agent/prompts/system.md` | Tracked in Git |
 | Tool schemas + implementation (may be mocked) | `src/triage_agent/tools.py` | Contract tests |
 | One-page architecture / failures / production evaluation | `docs/architecture.md` | Reviewer write-up |
@@ -23,14 +23,13 @@ An AI agent that reads an **entire chronological customer-support ticket**, inve
 
 **Scoring criteria:** readability, maintainability, extensibility and logic. **No chat UI is required**; the terminal interface is intentional.
 
-## 2. What is implemented (and what is not)
+## 2. Runtime
 
-- **Live GPT mode:** uses OpenAI **Responses API**, function calling, structured JSON schema, Pydantic validation and safety policy. It requires `OPENAI_API_KEY` and network access. It has **not been live-verified with a real API key in this environment**.
-- **Typhoon comparison mode:** optional **Chat Completions** function-call adapter for development testing. It does **not** substitute for the assignment-required OpenAI GPT mode. Tests with an injected fake client do **not** prove access to the real Typhoon API.
-- **Demo mode:** fully deterministic, works **offline without an API key**, uses the same read-only local tools and deterministic safety policy. Demo outputs **are not GPT outputs** and are marked `"mode": "demo_rules"`.
-- Four read-only mock tools: customer history, FAQ/KB lookup, billing status and system status. **No real charge/refund/incident** is executed or verified.
-- Supports English and Thai customer messages; simple Thai keyword support in the local KB. GPT handles language understanding in live mode.
-- Auto-respond, route and escalate are **recommendations/drafts only**; no real messages are sent.
+Every ticket goes through the OpenAI Responses API with function calling and strict structured output. Pydantic validates the proposal, and Python safety rules check the resulting decision. Running the CLI on tickets requires an authorized `OPENAI_API_KEY` and network access.
+
+The four read-only mock tools provide account history, FAQ search, billing status and system status. The agent reads English and Thai ticket threads. The output is a recommendation and draft for support staff. Mock records cannot verify a real charge, refund or incident.
+
+**Authenticated OpenAI: NOT VERIFIED.** The test suite exercises the real CLI, adapter, tools and policy with simulated OpenAI responses. [QA report](docs/qa-review.md)
 
 ## 3. Quick Start
 
@@ -60,81 +59,47 @@ Install:
 python -m pip install -e ".[dev]"
 ```
 
-Run all three original tickets **without any API key**:
+### OpenAI key and model
 
-```bash
-python -m triage_agent --mode demo --all --no-trace
-```
+Use a key from your OpenAI account or one authorized by the reviewer. Keep it out of Git.
 
-Run one sample with full tool trace:
-
-```bash
-python -m triage_agent --mode demo --ticket TICKET-002
-```
-
-Save the sample results:
-
-```bash
-python -m triage_agent --mode demo --all --output sample_outputs/demo_results.json
-```
-
-### Live GPT mode
-
-Use an API key **from your own OpenAI account or a key supplied by the reviewer**. **Never commit it.**
-
-**Windows PowerShell**:
+**Windows PowerShell**
 
 ```powershell
 $secureKey = Read-Host "OpenAI API key" -AsSecureString
 $env:OPENAI_API_KEY = [System.Net.NetworkCredential]::new("", $secureKey).Password
 Remove-Variable secureKey
-$env:OPENAI_MODEL="gpt-4.1-mini"
-python -m triage_agent --mode live --all --no-trace
-Remove-Item Env:OPENAI_API_KEY
 ```
 
-**macOS/Linux**:
+**Bash on macOS/Linux**
 
 ```bash
-read -rs -p "OpenAI API key: " OPENAI_API_KEY; echo
+read -rs -p "OpenAI API key: " OPENAI_API_KEY
+echo
 export OPENAI_API_KEY
-export OPENAI_MODEL="gpt-4.1-mini"
-python -m triage_agent --mode live --all --no-trace
-unset OPENAI_API_KEY
 ```
 
-`OPENAI_MODEL` can be changed to a compatible GPT model accessible to your account. `.env.example` documents the variables; the app reads **environment variables directly** and does not automatically load `.env`.
+The model defaults to `gpt-4.1-mini`. Set the optional `OPENAI_MODEL` environment variable to a compatible GPT model your account can access. [Environment variable reference](.env.example)
+
+The CLI reads the shell environment directly. After you finish, clear the key with `Remove-Item Env:OPENAI_API_KEY` in PowerShell or `unset OPENAI_API_KEY` in Bash.
 
 OpenAI has announced retirement of the `gpt-4.1-mini-2025-04-14` snapshot on January 14, 2027. Check the provider's model lifecycle before choosing a deployment model. [OpenAI deprecations](https://developers.openai.com/api/docs/deprecations)
 
-### Optional Typhoon evaluation (not a replacement for OpenAI GPT)
-
-Typhoon documents its OpenAI-compatible Chat Completions endpoint at `https://api.opentyphoon.ai/v1` and model `typhoon-v2.5-30b-a3b-instruct`. Its request format differs from the OpenAI GPT **Responses API** used for the assignment, so a separate adapter lives in `src/triage_agent/typhoon.py`. Never place a real key in source code, a repository, a GitHub workflow input, an issue, or a test fixture.
-
-**PowerShell** (set key locally, without saving it to the repository):
-
-```powershell
-$secureKey = Read-Host "Typhoon API key" -AsSecureString
-$env:TYPHOON_API_KEY = [System.Net.NetworkCredential]::new("", $secureKey).Password
-Remove-Variable secureKey
-python -m triage_agent --mode typhoon --all --no-trace
-python scripts/evaluate_typhoon.py --include-edge --limit 12
-Remove-Item Env:TYPHOON_API_KEY
-```
-
-**Bash**:
+### Run triage
 
 ```bash
-read -rs -p "Typhoon API key: " TYPHOON_API_KEY; echo
-export TYPHOON_API_KEY
-python -m triage_agent --mode typhoon --all --no-trace
-python scripts/evaluate_typhoon.py --include-edge --limit 12
-unset TYPHOON_API_KEY
+python -m triage_agent --all
+triage-agent --ticket TICKET-002
+python -m triage_agent --ticket-file tickets.json
 ```
 
-The optional evaluation fixture includes the 3 supplied tickets and 9 synthetic boundary cases. The harness reports the configured model, predicted labels, decisions, tools, policy overrides and per-ticket latency. Synthetic labels are proposed test expectations. Typhoon's public model list includes the configured model. Authenticated inference and named tool-choice support remain unverified in this review because a securely configured key was unavailable. [Typhoon models](https://docs.opentyphoon.ai/en/models/) · [Typhoon tool calling](https://docs.opentyphoon.ai/en/tool/)
+Running either entry point without a ticket selection processes the first sample. The three selection options are mutually exclusive. `tickets.json` accepts a single `Ticket` object or a non-empty array, using the same structure as the [sample tickets](src/triage_agent/data/tickets.json). A missing key, malformed input or unknown sample ID returns exit code 2 with an error on stderr.
 
-**Alternative network-enabled test:** In GitHub, configure **Settings → Secrets and variables → Actions → New repository secret** named `TYPHOON_API_KEY` (use a newly generated key). Then open **Actions → typhoon-real-api-smoke → Run workflow**. The manual workflow uses the repository secret, not a public workflow input, and runs three real-provider sample tickets by default. Do not place credentials into the Run Workflow form.
+Use `--no-trace` to omit tool arguments and results. Use `--output` to also save the same JSON to a UTF-8 file.
+
+```bash
+python -m triage_agent --all --no-trace --output results.json
+```
 
 ### Tests
 
@@ -142,42 +107,24 @@ The optional evaluation fixture includes the 3 supplied tickets and 9 synthetic 
 python -m pytest -q
 ```
 
-The test suite uses **fake OpenAI/Typhoon clients** to validate function-call orchestration without credentials. `tests/test_e2e_regression.py` exercises all 9 synthetic edge cases through the CLI, plus Thai and English contrast clauses, single-user failures, wider incidents, simultaneous outage and billing reports, refund disputes and input errors.
-
-See [the engineering review](docs/qa-review.md) for the baseline, regression results, packaging checks and open live-provider gates. Coverage reporting uses the optional local `pytest-cov` package.
-
-### Custom ticket input
-
-```bash
-python -m triage_agent --mode demo --ticket-file my_ticket.json
-python -m triage_agent --mode live --ticket-file my_ticket.json
-```
-
-`my_ticket.json` is a single `Ticket` object or a non-empty array of `Ticket` objects (see `src/triage_agent/data/tickets.json`). Empty arrays, malformed tickets and unknown ticket IDs return a non-zero exit code rather than generating a misleading successful result.
+The tests use fake OpenAI clients and an SDK mock transport. They exercise both required tools, all nine synthetic edge cases, scoped outages, multilingual negation, refund disputes and CLI failures. They verify the application and safety policy under simulated responses. [QA report](docs/qa-review.md)
 
 ## 4. Architecture
 
 ```mermaid
 flowchart TD
-    A[CLI validates profile and message thread] --> B{Mode}
-    B -->|live| C[OpenAI Responses API]
-    B -->|typhoon| D[Typhoon Chat Completions]
-    B -->|demo| E[Python rules]
-    C <--> T[Read-only tools]
-    D <--> T
-    E <--> T
-    C --> P[Validated proposal]
-    D --> P
-    E --> P
-    P --> F[Shared Python policy]
-    F --> G[JSON decision, assigned team and draft]
+    A[CLI validates profile and message thread] --> B[OpenAI Responses API]
+    B <-->|Function calls and results| C[Read-only tool registry]
+    B --> D[Pydantic validates structured proposal]
+    D --> E[Deterministic safety policy]
+    E --> F[JSON decision, assigned team and draft]
 ```
 
 ### How a ticket is judged
 
-In live mode, the [system prompt](src/triage_agent/prompts/system.md) asks the model to read the whole conversation and weigh impact, breadth, time pressure and how the problem develops. It recommends **critical** for widespread outages or major business interruption, **high** for repeated charges, disputes or major access problems, **medium** for defects with partial usability, and **low** for routine questions or nonurgent suggestions. Anger alone does not establish critical urgency. The model proposes the product, issue types, sentiment, urgency, action and team. The [schema](src/triage_agent/models.py) checks the shape and allowed values. The policy below decides which parts of the proposal can stand.
+The [system prompt](src/triage_agent/prompts/system.md) asks the model to read the whole conversation and weigh impact, breadth, time pressure and how the problem develops. It recommends **critical** for widespread outages or major business interruption, **high** for repeated charges, disputes or major access problems, **medium** for defects with partial usability, and **low** for routine questions or nonurgent suggestions. Anger alone does not establish critical urgency. The model proposes the product, issue types, sentiment, urgency, action and team. The [schema](src/triage_agent/models.py) checks the shape and allowed values. The policy below decides which parts of the proposal can stand.
 
-Both model adapters require a successful customer history lookup followed by a KB search. Billing and regional status lookups are optional model choices. KB retrieval counts matching keywords in the local [FAQ catalog](src/triage_agent/data/kb.json) and returns up to three articles with IDs and excerpts as evidence. The [sample tickets](src/triage_agent/data/tickets.json) and [edge cases](evaluation/adversarial_cases.json) supply inputs and evaluation expectations. They do not train the model or assign a decision to a new ticket.
+The GPT adapter requires a successful customer history lookup followed by a KB search. Billing and regional status lookups are optional model choices. KB retrieval counts matching keywords in the local [FAQ catalog](src/triage_agent/data/kb.json) and returns up to three articles with IDs and excerpts as evidence. The [sample tickets](src/triage_agent/data/tickets.json) and [edge cases](evaluation/adversarial_cases.json) supply inputs and evaluation expectations. They do not train the model or assign a decision to a new ticket.
 
 **Incident rules, in priority order.** A minimum urgency preserves a higher proposed urgency. The first matching row determines the incident-specific handling. The final action rules below then apply to every ticket. See the exact English and Thai patterns in [policy.py](src/triage_agent/policy.py).
 
@@ -187,11 +134,9 @@ Both model adapters require a successful customer history lookup followed by a K
 | Repeated charges, chargeback or a refund dispute, including a refund denial followed by an appeal. A refund-status inquiry alone does not trigger this rule. | At least `high`. Force `escalate_to_human` to Billing Support. Leave settlement and refund status unconfirmed. |
 | A message mentions “dark mode” and a recognized defect phrase, without a recognized third-party reference in that message. | At least `medium`. Convert an automatic reply to a specialist route. Specialist routes go to Product Support. A separate scheduling request adds an uncertainty when the scheduling phrase matches. |
 | An individual access failure or an unsuccessful payment or upgrade. | At least `medium`. Convert an automatic reply to a specialist route. Access goes to Technical Support and payment goes to Billing Support. Access takes priority when both match. |
-| No incident rule matches. | Live modes keep the model proposal subject to the final checks. Demo proposes a `low` general question and an automatic reply, also subject to those checks. |
+| No incident rule matches. | The model proposal proceeds to the final checks. |
 
 **Scope changes the decision.** “HTTP 500 affects all users” triggers the outage rule. “I get HTTP 500. Everyone else can log in” triggers the individual access rule. “No HTTP 500 occurred. Everyone can log in” triggers neither. The patterns check selected negations, contrast clauses and follow-up reports. The “affects / is affecting” pattern also checks whether the clause is a question or a denied belief. Seat count and a green public status do not establish how many customers are affected. [Outage regression cases](tests/test_e2e_regression.py)
-
-**Demo proposals.** The offline agent assigns product, issue types and sentiment with fixed branches. It looks up billing for a matched billing risk and regional status for a matched outage, including both checks when both apply. For example, a group outage yields `access_failure` and adds `http_500` when explicitly reported. A dark-mode defect yields `appearance_bug` and can also yield `feature_request`. Live extraction comes from the model. [Demo and GPT implementations](src/triage_agent/agent.py)
 
 **Final action rules.** Citation filtering happens before incident handling. The remaining checks use the urgency and action after incident handling.
 
@@ -217,32 +162,24 @@ The JSON records successful tool names in `tools_used` and policy reason codes i
 
 Tool definitions use strict JSON function schemas; every invocation is recorded with its arguments, result and success status. All tools are **read-only**, validate arguments and reject unknown tools. There is a maximum model/tool round limit.
 
-### Output contract (excerpt)
+### Output contract
 
-```json
-{
-  "ticket_id": "TICKET-002",
-  "urgency": "critical",
-  "product": "Enterprise platform",
-  "issue_types": ["http_500", "access_failure"],
-  "sentiment": "frustrated",
-  "action": "escalate_to_human",
-  "assigned_team": "Infrastructure / On-call",
-  "kb_article_ids": ["KB-002"],
-  "tools_used": ["get_customer_history", "search_knowledge_base", "check_system_status"],
-  "policy_overrides": [],
-  "mode": "demo_rules"
-}
-```
+`--all` and `--ticket-file` return an array. Selecting one sample by ID or using the default selection returns a single object.
 
-This is an **illustrative excerpt**, not a live model result. Actual output additionally includes `summary`, `reasons`, `draft_response`, `uncertainties` and optionally `tool_trace`.
+| Fields | Meaning |
+|---|---|
+| `ticket_id`, `product`, `issue_types`, `sentiment` | The input ID and structured extraction |
+| `urgency`, `action`, `assigned_team` | The final decision and handoff team, if applicable |
+| `summary`, `reasons`, `draft_response`, `uncertainties` | Evidence, response draft and open questions |
+| `kb_article_ids`, `tools_used`, `policy_overrides` | Retained citations, successful tool names and safety adjustments |
+| `tool_trace` | Tool arguments, results and success flags. Omitted by `--no-trace`. |
 
 ## 5. Supplied test scenarios and expected behavior
 
 | Case | Description | Target baseline | Rationale |
 |---|---|---|---|
 | `TICKET-001` | Free user: failed Pro upgrade, repeated reported charges, deadline | **high**, `escalate_to_human`, Billing | Financial dispute must be reviewed; bank/refund state unknown |
-| `TICKET-002` | Enterprise, Thailand, 45 seats: multi-user HTTP 500 and client demo | **critical**, `escalate_to_human`, Infrastructure | Broad access failure despite green public status; affected-user count unknown |
+| `TICKET-002` | Enterprise, Thailand, 45 seats: multi-user HTTP 500 before a client event | **critical**, `escalate_to_human`, Infrastructure | Broad access failure despite green public status; affected-user count unknown |
 | `TICKET-003` | Pro: dark-mode setting malfunction and scheduling idea | **medium**, `route_to_specialist`, Product | Separate confirmed-reported defect from unconfirmed feature availability |
 
 These labels are **proposed test baselines**, not ground truth provided by Ooca. `low` is tested separately for straightforward questions to cover **all four required urgency values**.
@@ -255,7 +192,7 @@ These labels are **proposed test baselines**, not ground truth provided by Ooca.
 - **Missing/unverified KB:** discard invented article IDs and Appearance citations for unrelated tickets. Low-risk auto-response uses an approved template. The general template asks for clarification.
 - **Tool failure:** fail closed rather than invent a success; malformed KB data returns a tool error and prevents auto-response.
 - **Critical:** force human escalation, even if the model suggested only a specialist route.
-- **Language variants and scope:** demo and policy share English and Thai incident checks. Affirmative group impact, including an explicit follow-up about the same error, is required for a multi-user outage. The heuristics cover selected phrasing. Review ambiguous reports and model outputs on labeled data.
+- **Language variants and scope:** the safety policy checks English and Thai incident evidence. Affirmative group impact, including an explicit follow-up about the same error, is required for a multi-user outage. The heuristics cover selected phrasing. Review ambiguous reports and model outputs on labeled data.
 - **Single-user failures:** a first failed upgrade or access issue is at least `medium` and routed to a specialist; widespread outages remain `critical`.
 - **API failure, malformed JSON, wrong customer ID, max tool rounds:** return a visible error and stop instead of silently fabricating a triage result.
 - **Untrusted content:** customer messages and KB passages are data; the system prompt forbids obeying instructions embedded in them. This is a prompt-layer mitigation, not a guarantee against every injection.
@@ -268,16 +205,14 @@ src/triage_agent/
   __main__.py              # CLI module entry
   cli.py                   # args / JSON / exit codes
   models.py                # Pydantic contracts + JSON schema
-  agent.py                 # GPT function-call loop + offline demo
+  agent.py                 # GPT Responses API function-call loop
   tools.py                 # four mock tools + schemas
   policy.py                # deterministic escalation safety rules
   prompts/system.md        # AI system prompt
   data/                    # original 3 ticket threads + mock data
 
-tests/                     # model, tool, policy, agent, CLI, E2E regression, adversarial, Typhoon fake-client tests
-src/triage_agent/typhoon.py # optional Typhoon evaluation adapter
-evaluation/                # proposed synthetic edge-case dataset
-scripts/evaluate_typhoon.py # manual real-provider test runner
+tests/                     # contracts, tool rules and OpenAI-mocked integration tests
+evaluation/                # synthetic edge cases and their expected decisions
 docs/architecture.md       # assignment-required one-page write-up
 docs/qa-review.md          # reviewer-style design risks and acceptance gates
 .github/workflows/tests.yml
@@ -289,7 +224,7 @@ pyproject.toml
 
 See `docs/architecture.md` for the **one-page submission write-up**. In a real rollout, use human-labeled ticket sets (including Thai/English), evaluate **critical recall**, macro-F1 for urgency, routing accuracy, unsafe auto-response rate, grounded KB citation rate, tool failure rate, latency and token cost. Review false negatives in critical/billing tickets first. Add confidence-based handoff, monitoring, access control and redaction before production.
 
-**Known limitations:** tiny mock knowledge base, heuristic offline keyword retrieval, three provided sample tickets, no live billing/monitoring integrations, no live OpenAI API call performed in this workspace. Do not infer real-world reliability from the local unit test count.
+**Known limitations:** tiny mock knowledge base, keyword-based FAQ retrieval, three provided sample tickets, no live billing/monitoring integrations, no live OpenAI API call performed in this workspace. Do not infer real-world reliability from the local unit test count.
 
 ## 9. Submission checklist
 
@@ -301,7 +236,6 @@ See `docs/architecture.md` for the **one-page submission write-up**. In a real r
 - [x] One-page architecture / risks / production evaluation write-up
 - [x] Full-path regression tests for original tickets, 9 additional synthetic cases, Thai/English negation, empty inputs and safe provider errors
 - [ ] **Live API smoke test with an authorized `OPENAI_API_KEY`**
-- [ ] **Real Typhoon provider smoke test** (optional; requires network and user-managed key)
 - [ ] Confirm reviewer access to private GitHub repository
 
 ---

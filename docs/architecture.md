@@ -4,7 +4,7 @@
 
 The CLI reads customer context and the full chronological ticket in Thai or English. A GPT model on the OpenAI Responses API calls `get_customer_history` and `search_knowledge_base` before proposing a decision. It can also query mock billing and regional status. The tools are read-only, validate arguments, scope account lookups to the current ticket and record their results. Python, the OpenAI SDK and Pydantic keep the workflow and its validation testable without an agent framework or database.
 
-The model returns one of four urgency levels, the product, issue types, sentiment and an action. A shared policy validates FAQ references and applies deterministic safeguards. Widespread access failures go to Infrastructure, while repeated charges and refund disputes require Billing review. Individual access, payment and appearance failures require specialist diagnosis. Low-risk automatic drafts use approved FAQ templates. The CLI returns JSON with the decision, rationale and optional tool traces. A deterministic offline mode exercises the same tools and policy.
+The model returns one of four urgency levels, the product, issue types, sentiment and an action. A shared policy validates FAQ references and applies deterministic safeguards. Widespread access failures go to Infrastructure, while repeated charges and refund disputes require Billing review. Individual access, payment and appearance failures require specialist diagnosis. Low-risk automatic drafts use approved FAQ templates. The CLI returns JSON with the decision, rationale and optional tool traces. Automated tests exercise this path with simulated OpenAI responses.
 
 ## Risks and safeguards
 

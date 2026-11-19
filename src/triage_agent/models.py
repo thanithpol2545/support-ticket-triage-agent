@@ -70,7 +70,6 @@ class TriageResult(StrictModel):
     policy_overrides: list[str]
     tools_used: list[str]
     tool_trace: list[ToolTrace]
-    mode: Literal["live_gpt", "demo_rules", "live_typhoon"]
 
     @model_validator(mode="after")
     def check_handoff(self) -> "TriageResult":

@@ -1,25 +1,25 @@
-"""Minimal reviewer-friendly CLI: no UI, database, or cloud prerequisites for demo."""
+"""CLI for GPT ticket triage."""
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 from pathlib import Path
+
 from pydantic import ValidationError
 
-from .agent import AgentExecutionError, DemoTriageAgent, GPTTriageAgent, load_tickets
+from .agent import AgentExecutionError, GPTTriageAgent, load_tickets
 from .models import Ticket
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Ooca support ticket triage agent")
-    parser.add_argument("--mode", choices=["demo", "live", "typhoon"], default="demo", help="demo=deterministic, live=OpenAI GPT (required for submission), typhoon=optional evaluation")
+    parser = argparse.ArgumentParser(description="Ooca support ticket triage with OpenAI GPT")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--ticket", help="Sample ticket ID (e.g., TICKET-001)")
     selection.add_argument("--all", action="store_true", help="Process all three supplied samples")
     selection.add_argument("--ticket-file", type=Path, help="Custom JSON ticket object or array")
     parser.add_argument("--output", type=Path, help="Write JSON output to this file")
-    parser.add_argument("--no-trace", action="store_true", help="Hide full tool trace in printed JSON")
+    parser.add_argument("--no-trace", action="store_true", help="Omit tool trace from JSON output")
     args = parser.parse_args(argv)
 
     try:
@@ -37,11 +37,7 @@ def main(argv: list[str] | None = None) -> int:
         elif not args.all and not args.ticket_file:
             tickets = tickets[:1]
 
-        if args.mode == "typhoon":
-            from .typhoon import TyphoonTriageAgent
-            agent = TyphoonTriageAgent()
-        else:
-            agent = GPTTriageAgent() if args.mode == "live" else DemoTriageAgent()
+        agent = GPTTriageAgent()
         results = []
         for ticket in tickets:
             result = agent.run(ticket).model_dump()

@@ -28,7 +28,7 @@ def proposal(**overrides):
 ])
 def test_risky_scenarios_override_bad_model(text, urgency, action):
     t = ticket(text)
-    result = finalize(t, proposal(), ToolRegistry(t), "demo_rules")
+    result = finalize(t, proposal(), ToolRegistry(t))
     assert result.urgency == urgency
     assert result.action == action
     assert "Model says this is resolved." not in result.draft_response
@@ -42,7 +42,7 @@ def test_risky_scenarios_override_bad_model(text, urgency, action):
 def test_negations_and_third_party_do_not_trigger_hardcoded_escalation(text):
     t = ticket(text)
     tools = ToolRegistry(t)
-    result = finalize(t, proposal(), tools, "demo_rules")
+    result = finalize(t, proposal(), tools)
     assert result.urgency == "low"
     assert "repeated_billing_min_high" not in result.policy_overrides
     assert "multi_user_outage_min_critical" not in result.policy_overrides
@@ -56,7 +56,7 @@ def test_model_draft_password_request_cannot_reach_auto_response():
     search = tools.call("search_knowledge_base", {"query": "hello general guide"})
     assert search["articles"]
     result = finalize(t, proposal(kb_article_ids=["KB-004"],
-        draft_response="Please share your password and full credit card number."), tools, "demo_rules")
+        draft_response="Please share your password and full credit card number."), tools)
     assert result.action == "auto_respond"
     assert "password" not in result.draft_response.lower()
     assert "credit card" not in result.draft_response.lower()
@@ -66,7 +66,7 @@ def test_model_draft_password_request_cannot_reach_auto_response():
 def test_critical_route_must_be_escalated():
     t = ticket("I have a critical incident")
     result = finalize(t, proposal(urgency="critical", action="route_to_specialist",
-                                 assigned_team="General Support"), ToolRegistry(t), "demo_rules")
+                                 assigned_team="General Support"), ToolRegistry(t))
     assert result.action == "escalate_to_human"
     assert result.assigned_team == "Support Escalation"
 
@@ -78,7 +78,7 @@ def test_broken_kb_record_becomes_tool_error_not_unhandled_keyerror():
     result = tools.call("search_knowledge_base", {"query": "hello"})
     assert "error" in result
     assert tools.trace[-1].ok is False
-    decision = finalize(t, proposal(kb_article_ids=["KB-X"]), tools, "demo_rules")
+    decision = finalize(t, proposal(kb_article_ids=["KB-X"]), tools)
     assert decision.action == "route_to_specialist"
 
 
@@ -90,7 +90,7 @@ def test_retrieved_appearance_faq_does_not_answer_an_unrelated_ticket(text):
     t = ticket(text)
     tools = ToolRegistry(t)
     assert tools.call('search_knowledge_base', {'query': 'appearance settings'})['articles'][0]['id'] == 'KB-003'
-    decision = finalize(t, proposal(kb_article_ids=['KB-003']), tools, 'live_gpt')
+    decision = finalize(t, proposal(kb_article_ids=['KB-003']), tools)
     assert decision.action == 'route_to_specialist'
     assert decision.kb_article_ids == []
 
@@ -102,7 +102,7 @@ def test_matching_appearance_faq_uses_template_instead_of_catalog_excerpt():
         'id': 'KB-003', 'title': 'Appearance', 'keywords': ['appearance'], 'content': 'UNTRUSTED_EXCERPT_MARKER',
     }]
     tools.call('search_knowledge_base', {'query': 'appearance'})
-    decision = finalize(t, proposal(kb_article_ids=['KB-003']), tools, 'live_gpt')
+    decision = finalize(t, proposal(kb_article_ids=['KB-003']), tools)
     assert decision.action == 'auto_respond'
     assert 'Settings > Appearance' in decision.draft_response
     assert 'UNTRUSTED_EXCERPT_MARKER' not in decision.draft_response

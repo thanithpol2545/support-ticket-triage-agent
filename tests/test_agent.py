@@ -50,7 +50,7 @@ def model_json(**overrides):
     return json.dumps(data)
 
 
-def test_live_agent_real_tool_loop_with_fake_sdk(tickets):
+def test_agent_tool_loop_with_fake_sdk(tickets):
     t = tickets["TICKET-001"]
     client = FakeClient([
         response([call("get_customer_history", {"customer_id": t.customer.customer_id}, "1")]),
@@ -59,7 +59,6 @@ def test_live_agent_real_tool_loop_with_fake_sdk(tickets):
         response(text=model_json()),
     ])
     result = GPTTriageAgent(client=client).run(t)
-    assert result.mode == "live_gpt"
     assert result.action == "escalate_to_human"  # policy supersedes unsafe model advice
     assert result.urgency == "high"
     assert result.tools_used == ["get_customer_history", "search_knowledge_base", "check_billing_status"]
@@ -95,6 +94,21 @@ def test_wrong_customer_tool_call_fails_closed(tickets):
     client = FakeClient([response([call("get_customer_history", {"customer_id": "another-id"}, "1")])])
     with pytest.raises(AgentExecutionError, match="Required tool failed"):
         GPTTriageAgent(client=client).run(tickets["TICKET-001"])
+
+
+@pytest.mark.parametrize('kb_response,error', [
+    (response(text=model_json()), 'Required tool not called: search_knowledge_base'),
+    (response([call('search_knowledge_base', {'query': ''}, '2')]), 'Required tool failed: search_knowledge_base'),
+])
+def test_no_final_proposal_without_a_successful_kb_call(tickets, kb_response, error):
+    ticket = tickets['TICKET-001']
+    client = FakeClient([
+        response([call('get_customer_history', {'customer_id': ticket.customer.customer_id}, '1')]),
+        kb_response,
+    ])
+    with pytest.raises(AgentExecutionError, match=error):
+        GPTTriageAgent(client=client).run(ticket)
+    assert len(client.responses.requests) == 2
 
 
 def test_api_failure_is_reported_without_unsafe_fallback(tickets):
