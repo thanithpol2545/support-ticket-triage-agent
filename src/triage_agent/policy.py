@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
-from typing import Literal
+from typing import NamedTuple
 
 from .models import AgentProposal, Ticket, TriageResult
 from .tools import ToolRegistry
@@ -87,19 +87,33 @@ _DARK_DEFECT = re.compile(r"still\s+(?:shows?\s+)?light|not\s+working|doesn't\s+
 _APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light theme|appearance)\b|(?:โหมดมืด|ธีมมืด)"
 _CLAUSE_BREAK = re.compile(r"[.!?;\n,]|\b(?:but|however|yet)\b|แต่", re.IGNORECASE)
 _HYPOTHETICAL = re.compile(
-    r"\b(?:what\s+if|if|in\s+case|suppose|assuming)\b|ถ้า|หาก|สมมติว่า", re.IGNORECASE
+    r"\b(?:what\s+if|if|unless|in\s+case|in\s+the\s+event\s+that|suppose|assuming)\b|ถ้า|หาก|สมมติว่า",
+    re.IGNORECASE,
+)
+_REGION_NAME = (
+    r"(?:\b(?:asia(?:[- ]pacific)?|apac|europe|eu|north america|south america|africa|oceania|australia)\b"
+    r"|เอเชีย|ยุโรป)"
+)
+_REGION_NAMES = {
+    "apac": "Asia-Pacific", "asia-pacific": "Asia-Pacific", "asia pacific": "Asia-Pacific",
+    "eu": "EU", "เอเชีย": "Asia", "ยุโรป": "Europe",
+}
+_ACCESS_RESTORED = (
+    r"\s+(?:can|(?:are|is)\s+able\s+to)\s+"
+    r"(?:log\s*in|sign\s*in|access(?:\s+\w+){0,5})\s+(?:again|now)\b"
 )
 _RECOVERY_PATTERNS = (
     r"\b(?:everyone|all\s+(?:our\s+)?(?:users|employees|staff)|the\s+whole\s+team)\b"
-    + _SCOPE_LOCATION
-    + r"\s+(?:can|(?:are|is)\s+able\s+to)\s+(?:log\s*in|sign\s*in|access(?:\s+\w+){0,5})\s+(?:again|now)\b",
-    r"\b(?:the\s+)?(?:system|service|app|site)\s+(?:is\s+)?(?:back\s+up|back\s+online|restored)\b",
-    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)\s*กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?",
-    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)\s*(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้แล้ว",
+    + _SCOPE_LOCATION + _ACCESS_RESTORED,
+    r"\b(?:users|employees|staff)\s+(?:in|across)\s+" + _REGION_NAME + _ACCESS_RESTORED,
+    r"(?:\b(?:system|service|app|site)\b" + _SCOPE_LOCATION + r"|" + _REGION_NAME + r")"
+    r"\s+(?:(?:is|has\s+been)\s+)?(?:back\s+up|back\s+online|restored)\b",
+    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)(?:\s*ใน(?:เอเชีย|ยุโรป))?\s*"
+    r"(?:กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?|(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้แล้ว)",
 )
 _PASSWORD_REQUESTS = (
     r"\b(?:send|share|provide|give|tell|disclose|submit|reply\s+with)\s+"
-    r"(?:(?:us|me|with\s+us|with\s+me)\s+)?"
+    r"(?:(?:with\s+)?(?:us|me|support|(?:our|the)\s+(?:support\s+)?team)(?:\s+with)?\s+)?"
     r"(?:(?:your|the|current|existing|account|login)\s+){0,4}password\b",
     r"(?:ส่ง|แชร์|แจ้ง|บอก|ระบุ)(?:\s|มา|ให้|เรา|ทีมงาน|เจ้าหน้าที่){0,8}รหัสผ่าน",
 )
@@ -179,23 +193,44 @@ def _floor_urgency(value: str, minimum: str) -> str:
 
 
 def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
-    """Keep the text before a condition so an earlier report still counts."""
+    """Yield reports while keeping a conditional consequence with its premise."""
     for message in messages:
         start = 0
+        conditional = False
         for boundary in _CLAUSE_BREAK.finditer(message):
-            yield _HYPOTHETICAL.split(message[start:boundary.start()], maxsplit=1)[0], boundary.group()
+            clause = message[start:boundary.start()]
+            delimiter = boundary.group()
+            conditional = conditional or bool(_HYPOTHETICAL.search(clause))
+            if not conditional:
+                yield clause, delimiter
+            if delimiter not in {",", ";"}:
+                conditional = False
             start = boundary.end()
-        yield _HYPOTHETICAL.split(message[start:], maxsplit=1)[0], ""
+        clause = message[start:]
+        if not conditional and not _HYPOTHETICAL.search(clause):
+            yield clause, ""
 
 
-def _multi_user_outage(messages: list[str]) -> Literal["active", "recovered"] | None:
-    state: Literal["active", "recovered"] | None = None
+class _OutageEvidence(NamedTuple):
+    # None represents a report without a named region.
+    unresolved: set[str | None]
+    recovered: set[str | None]
+
+
+def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
+    unresolved: set[str | None] = set()
+    recovered: set[str | None] = set()
     symptom_reported = False
     for clause, delimiter in _outage_clauses(messages):
+        names = re.findall(_REGION_NAME, clause, re.IGNORECASE)
+        regions = {_REGION_NAMES.get(name.casefold(), name.title()) for name in names}
+        region = next(iter(regions)) if len(regions) == 1 else None
         if delimiter != "?" and any(_affirmed_pattern(clause, pattern) for pattern in _RECOVERY_PATTERNS):
-            if state == "active":
-                state = "recovered"
-            symptom_reported = False
+            if (unresolved or recovered) and len(regions) <= 1 and (region is not None or None in unresolved):
+                recovered.add(region)
+                if region in unresolved:
+                    unresolved.remove(region)
+                    symptom_reported = False
             continue
         symptom_in_clause = _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
         symptom_reported = symptom_reported or symptom_in_clause
@@ -205,11 +240,15 @@ def _multi_user_outage(messages: list[str]) -> Literal["active", "recovered"] | 
             or (symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP))
             or (symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP))
         ):
-            state = "active"
-    return state
+            unresolved.add(region)
+            if region is None:
+                recovered.clear()
+            else:
+                recovered.discard(region)
+    return _OutageEvidence(unresolved, recovered) if unresolved or recovered else None
 
 
-def risk_signals(ticket: Ticket) -> tuple[Literal["active", "recovered"] | None, bool, bool]:
+def risk_signals(ticket: Ticket) -> tuple[_OutageEvidence | None, bool, bool]:
     messages = [m.text.lower() for m in ticket.messages]
     billing = any(_affirmed_pattern(m, p) for m in messages for p in _BILLING_PATTERNS) or reports_refund_dispute(ticket)
     outage = _multi_user_outage(messages)
@@ -217,6 +256,31 @@ def risk_signals(ticket: Ticket) -> tuple[Literal["active", "recovered"] | None,
     dark_bug = any("dark mode" in m and _DARK_DEFECT.search(m)
                    and not third_party.search(m) for m in messages)
     return outage, billing, dark_bug
+
+
+def _outage_draft(outage: _OutageEvidence) -> str:
+    recovered = ", ".join(sorted(region for region in outage.recovered if region is not None))
+    unresolved = ", ".join(sorted(region for region in outage.unresolved if region is not None))
+    if not outage.unresolved:
+        group = f"users in {recovered}" if recovered and None not in outage.recovered else "users"
+        return (
+            f"Thank you for confirming that {group} can access the system again. "
+            "We are sharing the earlier interruption with our incident team for follow-up. "
+            "The cause and regional scope are pending confirmation."
+        )
+    if recovered:
+        scope = f"in {unresolved}" if None not in outage.unresolved else "for the affected users"
+        return (
+            f"You reported that users in {recovered} can access the system again. "
+            f"Whether access has been restored {scope} remains unconfirmed. "
+            "We are escalating your report to our incident team for urgent investigation."
+        )
+    scope = f" in {unresolved}" if None not in outage.unresolved else ""
+    return (
+        f"We understand that several users{scope} cannot access the system. "
+        "We are escalating your report to our incident team for urgent investigation. "
+        "The cause, regional scope and recovery time are pending confirmation."
+    )
 
 
 def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> TriageResult:
@@ -241,18 +305,7 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
         data["action"] = "escalate_to_human"
         data["assigned_team"] = "Infrastructure / On-call"
         # Keep the existing review of a broad outage while Support defines post-recovery routing.
-        if outage == "recovered":
-            data["draft_response"] = (
-                "Thank you for confirming that users can access the system again. "
-                "We are sharing the earlier interruption with our incident team for follow-up. "
-                "The cause and regional scope are pending confirmation."
-            )
-        else:
-            data["draft_response"] = (
-                "We understand that several users cannot access the system. "
-                "We are escalating your report to our incident team for urgent investigation. "
-                "The cause, regional scope and recovery time are pending confirmation."
-            )
+        data["draft_response"] = _outage_draft(outage)
         data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
             "Regional incident not confirmed", "Exact affected user count not verified"]))
         if billing:

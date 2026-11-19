@@ -2,7 +2,7 @@
 
 ตรวจวันที่ 19 พฤศจิกายน 2026 ที่ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` ผลหลังแก้วัดจาก working tree ที่ส่งมอบบน baseline นี้ การประมวลผลจริงยังใช้ GPT ผ่าน OpenAI Responses API
 
-**Offline หลังแก้ 153 tests ผ่าน** บน Python 3.11 รันทั้ง `python -m triage_agent` และ `triage-agent` กับ Responses API จำลองบน localhost เพื่อยืนยันการส่งออก audit และตรวจตัวประเมินด้วยผลที่กำหนดเอง ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
+**Offline รอบแรก 153 tests ผ่าน** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแก้ตามผลตรวจ Research เทียบกับ `cdef161a32ed51d802ef80a6ff2fdc4239fad7d7` แล้วผ่าน **165 tests** ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
@@ -29,10 +29,10 @@
 | P01 | คำถามสมมติ / เหตุจริงที่ลงท้ายด้วยคำถาม | ตก / ผ่าน | ผ่าน / ผ่าน |
 | P02 | ยังล่ม / แจ้งว่ากู้คืน | ผ่าน / ตก | ผ่าน / ผ่าน |
 | P03 | กู้คืนและยังใช้งานได้ / ล่มซ้ำ | ตก / ผ่าน | ผ่าน / ผ่าน |
-| P04 | ถามขอบเขต / ยืนยันว่าทีมอื่นเจอด้วย | ยังไม่ได้วัด | เตรียม Ticket สำหรับ GPT แล้ว |
-| P05 | ลองจ่ายหลายครั้ง / เห็นหลายรายการเรียกเก็บ | ยังไม่ได้วัด | เตรียม Ticket สำหรับ GPT แล้ว |
-| P06 | ยังโต้แย้ง / ถอนข้อโต้แย้ง | ยังไม่ได้วัด | เตรียม Ticket สำหรับ GPT แล้ว |
-| P07 | ขอวิธีตั้งค่า / แจ้งบั๊ก System Default | ยังไม่ได้วัด | เตรียม Ticket สำหรับ GPT แล้ว |
+| P04 | ถามขอบเขต / ยืนยันว่าทีมอื่นเจอด้วย | ยังไม่ได้วัด | พร้อม Ticket และ [เกณฑ์ราย A/B](paired-scoring-rubric.md) |
+| P05 | ลองจ่ายหลายครั้ง / เห็นหลายรายการเรียกเก็บ | ยังไม่ได้วัด | พร้อม Ticket และเกณฑ์ราย A/B |
+| P06 | ยังโต้แย้ง / ถอนข้อโต้แย้ง | ยังไม่ได้วัด | พร้อม Ticket และเกณฑ์ราย A/B |
+| P07 | ขอวิธีตั้งค่า / แจ้งบั๊ก System Default | ยังไม่ได้วัด | พร้อม Ticket และเกณฑ์ราย A/B |
 | P08 | GPT จำลองขอรหัสผ่าน / เตือนว่าอย่าส่ง | ตก / ผ่าน | ผ่าน / ผ่าน |
 | P09 | Retrieval สำนวนอังกฤษเรื่องจ่ายซ้ำ | พบ / พลาด | พบ / พลาด |
 | P10 | Retrieval โหมดมืดไทย / ไทยปนอังกฤษ | พลาด / พบ | พลาด / พบ |
@@ -40,6 +40,21 @@
 | P12 | Public status `operational` / `degraded` เมื่อผู้ใช้ยืนยันว่าเกิดเหตุ | ผ่าน / ผ่าน | ผ่าน / ผ่าน |
 
 P01A เคยถูกยกระดับเป็น `critical / escalate_to_human` P02B และ P03A เคยได้ร่างว่าผู้ใช้ยังเข้าไม่ได้ และ P08A เคยได้ร่างที่ขอรหัสผ่าน หลังแก้กฎจะพิจารณาสถานะล่าสุดที่ยืนยันไว้และแทนร่างที่ขอรหัสผ่านตรง ๆ ด้วยร่างปลอดภัย เคสที่รายงานว่ากู้คืนแล้วตรวจเฉพาะข้อความร่าง การติดตามยังใช้เส้นทางเดิมระหว่างรอ Support ตกลงเกณฑ์ urgency และทีม กฎจับรูปประโยคเป็น deterministic backstop และยังไม่มีหลักฐานว่าครอบคลุมทุกสำนวน [ข้อความ A/B](../evaluation/paired_cases.json) · [เทสต์ผ่าน CLI](../tests/test_paired_regression.py)
+
+### ตรวจซ้ำตามผลรีวิว PR #5
+
+ชุดใหม่ใช้ข้อเสนอจำลองจาก OpenAI แล้วตรวจทั้ง `proposal` และ `result` ใน `--audit` เดียวกัน เทสต์ชุดเดียวกันตก **4** และผ่าน **8** บน `cdef161` จากนั้นผ่าน **12/12** หลังแก้
+
+| เคส | ก่อนแก้ | หลังแก้ |
+| --- | --- | --- |
+| `Please provide us with your password.` | ร่างส่งต่อยังขอรหัสผ่านทั้ง specialist และ human escalation ทางตอบอัตโนมัติใช้ FAQ ที่อนุมัติแล้ว | ร่างสุดท้ายปลอดภัยครบสาม action และคง action กับทีมที่เสนอไว้ในเคสส่งต่อ |
+| `Please never share your password.` | ผ่านในร่างส่งต่อ | คงคำเตือนเดิมทั้ง specialist และ human escalation |
+| Asia เข้าไม่ได้ แล้ว Europe แจ้งว่ากลับเข้าได้ | ร่างยืนยันการกู้คืนแบบไม่ระบุขอบเขต | ร่างระบุว่าได้รับรายงานว่า Europe กลับเข้าได้ และการกู้คืนใน Asia ยังไม่ยืนยัน |
+| Asia ยืนยันว่ากู้คืนเอง / Asia กู้คืนแล้วล่มซ้ำ | ทั้งสองเคสควบคุมสื่อสถานะล่าสุดถูกต้อง | ร่างสื่อการกู้คืนและการล่มซ้ำตามลำดับข้อความ เกณฑ์ urgency หลังการกู้คืนเป็น `pending` |
+| `If the service is down, all users cannot log in. What is the procedure?` | Policy ยกระดับเป็น `critical / escalate_to_human` | คงข้อเสนอจำลอง `low / route_to_specialist` |
+| `All users cannot log in. What is the procedure?` | ผ่าน | ยังยกระดับเป็น `critical / escalate_to_human` ไป Infrastructure / On-call |
+
+รันซ้ำด้วย `python -m pytest -q tests/test_paired_regression.py -k audit` เกณฑ์ P04–P07 มี **18 ข้อที่ประเมินได้** โดยตัด field ที่เป็น `pending` ออกจากตัวส่วน ยังไม่มีการให้คะแนนจาก GPT จริง [เกณฑ์ให้คะแนนราย A/B](paired-scoring-rubric.md)
 
 ### Retrieval probes จากข้อความลูกค้าตรง ๆ
 
@@ -52,7 +67,7 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | P11A | ช่วยชี้หน้า settings ของการแจ้งเตือนหน่อยครับ | ไม่มี FAQ ตรงหัวข้อ | KB-003 จากคำว่า `settings` |
 | P11B | ช่วยชี้หน้า settings ของโหมดมืดหน่อยครับ | KB-003 | KB-003 |
 
-`hit@3` เท่ากับ **3/5** สำหรับเคสที่มี FAQ กำกับ P11A แสดงผลผิดหัวข้อแยกจากตัวส่วน โค้ด Retrieval และ KB เหมือน baseline คำค้นที่ GPT สร้างจริงยังไม่มีผล
+`hit@3` เท่ากับ **3/5** สำหรับเคสที่มี FAQ กำกับ P11A ยังได้ `KB-003` ผิดหัวข้อและไม่นับในตัวส่วน ใน CLI จำลอง ทั้ง `settings` และ `settings help` ถอด citation และคำแนะนำ Appearance ออกจากผลสุดท้าย เส้นทางแรกส่งต่อ ส่วนเส้นทางที่มี `KB-004` ใช้ FAQ ขอรายละเอียดทั่วไป Retrieval และ KB ใช้ชุดเดิม คำค้นจาก GPT จริงยังไม่มีผล
 
 ## 4. BANKING77 pilot
 
@@ -82,7 +97,7 @@ python -m evaluation.banking77 verify
 python -m evaluation.paired probe
 ```
 
-`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน การรัน P01–P03, P08 และ P12 ซ้ำกับ Policy เดิมทำได้ใน PowerShell โดยโหลดไฟล์ Policy ที่ baseline เข้าหน่วยความจำและใช้ CLI กับข้อเสนอจำลองชุดเดียวกัน
+`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน การทำซ้ำผลก่อนแก้ตาม Research ใช้ PowerShell โหลด Policy บน `cdef161` เข้าหน่วยความจำแล้วรัน CLI กับข้อเสนอจำลองชุดเดียวกัน สำหรับผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ให้เปลี่ยน `revision` เป็น `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
 
 ```powershell
 @'
@@ -92,13 +107,13 @@ from types import ModuleType
 import pytest
 from triage_agent import agent
 
-revision = "aacbe28bc92b352ee59e1bcff76b7013844386ba"
+revision = "cdef161a32ed51d802ef80a6ff2fdc4239fad7d7"
 path = "src/triage_agent/policy.py"
 baseline = ModuleType("triage_agent.baseline_policy")
 source = subprocess.check_output(["git", "show", f"{revision}:{path}"])
 exec(compile(source, f"{revision}:{path}", "exec"), baseline.__dict__)
 agent.finalize = baseline.finalize
-raise SystemExit(pytest.main(["-q", "tests/test_paired_regression.py"]))
+raise SystemExit(pytest.main(["-q", "tests/test_paired_regression.py", "-k", "audit"]))
 '@ | python -
 ```
 

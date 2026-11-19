@@ -5,9 +5,141 @@ import pytest
 from evaluation.paired import load_pairs, ticket_for
 from triage_agent import tools
 from triage_agent.cli import main
+from triage_agent.models import Message
 
 
 PAIRS = {pair["id"]: pair for pair in load_pairs()}
+
+
+@pytest.fixture
+def run_audit(mock_openai, tmp_path, capsys):
+    def run(ticket, **proposal_fields):
+        path = tmp_path / "ticket.json"
+        path.write_text(ticket.model_dump_json(), encoding="utf-8")
+        mock_openai.queue(ticket, **proposal_fields)
+        assert main(["--ticket-file", str(path), "--audit"]) == 0
+        return json.loads(capsys.readouterr().out)[0]
+
+    return run
+
+
+@pytest.mark.parametrize(
+    "action,team",
+    [("auto_respond", None), ("route_to_specialist", "Technical Support"),
+     ("escalate_to_human", "Support Escalation")],
+)
+def test_audit_password_request_is_removed_from_every_final_action(action, team, run_audit):
+    ticket = ticket_for(PAIRS["P08"], "A")
+    request = "Please provide us with your password."
+    audit = run_audit(
+        ticket, action=action, assigned_team=team,
+        draft_response=request, kb_article_ids=["KB-004"],
+    )
+
+    assert audit["proposal"]["draft_response"] == request
+    final = audit["result"]
+    assert (final["action"], final["assigned_team"]) == (action, team)
+    assert "provide us with your password" not in final["draft_response"].lower()
+    if action == "auto_respond":
+        assert "auto_response_replaced_with_approved_faq_template" in final["policy_overrides"]
+    else:
+        assert "do not share your password" in final["draft_response"].lower()
+        assert "password_request_replaced_with_safe_draft" in final["policy_overrides"]
+
+
+@pytest.mark.parametrize("action", ["route_to_specialist", "escalate_to_human"])
+def test_audit_preserves_password_warning_on_handoff(action, run_audit):
+    ticket = ticket_for(PAIRS["P08"], "B")
+    warning = "Please never share your password."
+    final = run_audit(ticket, action=action, assigned_team="Technical Support", draft_response=warning)["result"]
+
+    assert final["draft_response"] == warning
+    assert "password_request_replaced_with_safe_draft" not in final["policy_overrides"]
+
+
+@pytest.mark.parametrize(
+    "updates,required,forbidden",
+    [
+        pytest.param(
+            ["Everyone in Europe can log in again."],
+            ["users in Europe can access the system again", "whether access has been restored in Asia remains unconfirmed"],
+            ["users in Asia can access the system again"], id="other-region-recovery",
+        ),
+        pytest.param(
+            ["Everyone in Asia can log in again."],
+            ["can access the system again"], ["cannot access"], id="same-region-recovery",
+        ),
+        pytest.param(
+            ["Everyone in Asia can log in again.", "All users in Asia get HTTP 500 again."],
+            ["cannot access"], ["can access the system again"], id="same-region-relapse",
+        ),
+    ],
+)
+def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, forbidden, run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages.extend(Message(when=str(index), text=text) for index, text in enumerate(updates, 2))
+    proposal_draft = "Thanks for confirming that Asia recovered."
+    audit = run_audit(ticket, draft_response=proposal_draft, action="route_to_specialist")
+
+    assert audit["proposal"]["draft_response"] == proposal_draft
+    draft = audit["result"]["draft_response"].lower()
+    for fragment in required:
+        assert fragment.lower() in draft
+    for fragment in forbidden:
+        assert fragment.lower() not in draft
+
+
+@pytest.mark.parametrize(
+    "text,is_outage",
+    [
+        pytest.param(
+            "If the service is down, all users cannot log in. What is the procedure?",
+            False, id="hypothetical-across-comma",
+        ),
+        pytest.param(
+            "All users cannot log in. What is the procedure?", True, id="affirmed-before-question",
+        ),
+    ],
+)
+def test_audit_outage_policy_distinguishes_condition_from_report(text, is_outage, run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [Message(when="now", text=text)]
+    audit = run_audit(ticket, urgency="low", action="route_to_specialist", assigned_team="General Support")
+
+    assert audit["proposal"]["urgency"] == "low"
+    final = audit["result"]
+    if is_outage:
+        assert (final["urgency"], final["action"], final["assigned_team"]) == (
+            "critical", "escalate_to_human", "Infrastructure / On-call",
+        )
+    else:
+        assert (final["urgency"], final["action"], final["assigned_team"]) == (
+            "low", "route_to_specialist", "General Support",
+        )
+
+
+@pytest.mark.parametrize(
+    "query,citations,action",
+    [
+        ("settings", [], "route_to_specialist"),
+        ("settings help", ["KB-004"], "auto_respond"),
+    ],
+)
+def test_audit_p11a_removes_unrelated_appearance_guidance(query, citations, action, run_audit):
+    ticket = ticket_for(PAIRS["P11"], "A")
+    audit = run_audit(
+        ticket, query=query, kb_article_ids=["KB-003", *citations],
+        draft_response="Open Settings > Appearance.",
+    )
+
+    assert audit["proposal"]["action"] == "auto_respond"
+    final = audit["result"]
+    search = final["tool_trace"][1]
+    assert search["ok"]
+    assert "KB-003" in [article["id"] for article in search["result"]["articles"]]
+    assert final["kb_article_ids"] == citations
+    assert final["action"] == action
+    assert "appearance" not in final["draft_response"].lower()
 
 
 @pytest.mark.parametrize("case_id", ["P01A", "P01B", "P02A", "P02B", "P03A", "P03B", "P08A", "P08B"])
