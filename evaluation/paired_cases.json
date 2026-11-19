@@ -1,0 +1,77 @@
+[
+  {
+    "id": "P01",
+    "A": ["If all users get HTTP 500, who should I contact?"],
+    "B": ["All users get HTTP 500 now. Who should I contact?"]
+  },
+  {
+    "id": "P02",
+    "prefix": ["ทั้งทีมเข้าใช้งานไม่ได้ ขึ้น HTTP 500"],
+    "A": ["ตอนนี้ทุกคนยังเข้าใช้งานไม่ได้"],
+    "B": ["ตอนนี้ทุกคนกลับเข้าใช้งานได้แล้ว"]
+  },
+  {
+    "id": "P03",
+    "prefix": ["All users get HTTP 500.", "ทุกคนกลับเข้าใช้งานได้แล้ว"],
+    "A": ["ตอนนี้ทุกคนยังใช้งานได้"],
+    "B": ["ตอนนี้ทุกคนเข้าใช้งานไม่ได้อีก ขึ้น HTTP 500"]
+  },
+  {
+    "id": "P04",
+    "prefix": ["ผมเจอ HTTP 500 ตอนเปิดหน้าเข้าใช้งาน"],
+    "A": ["ทีมอื่นเจอ error เดียวกันด้วยหรือเปล่าครับ"],
+    "B": ["ทีมอื่นยืนยันว่าเจอ error เดียวกันด้วยครับ"]
+  },
+  {
+    "id": "P05",
+    "prefix": ["ลองอัปเกรดแล้วไม่สำเร็จครับ"],
+    "A": ["ผมกดจ่ายไป 3 ครั้ง"],
+    "B": ["ใบแจ้งยอดขึ้นรายการเรียกเก็บ 3 รายการ"]
+  },
+  {
+    "id": "P06",
+    "prefix": ["My refund was denied.", "I dispute that decision."],
+    "A": ["I still dispute that decision."],
+    "B": ["I withdraw my dispute."]
+  },
+  {
+    "id": "P07",
+    "A": ["ช่วยบอกวิธีตั้ง dark mode ตาม System Default ได้ไหมครับ"],
+    "B": ["ตั้ง dark mode ตาม System Default แล้ว แต่แอปยังแสดงธีมสว่างครับ"]
+  },
+  {
+    "id": "P08",
+    "prefix": ["My sign-in email needs updating."],
+    "A": [],
+    "B": [],
+    "draft": {
+      "A": "Please send us your password.",
+      "B": "Please do not send us your password."
+    }
+  },
+  {
+    "id": "P09",
+    "A": ["I got a duplicate charge after trying to switch plans."],
+    "B": ["I got billed twice after trying to switch plans."],
+    "expected_faq": {"A": "KB-001", "B": "KB-001"}
+  },
+  {
+    "id": "P10",
+    "A": ["ขอวิธีตั้งโหมดมืดหน่อยครับ"],
+    "B": ["ขอวิธีตั้ง dark mode หน่อยครับ"],
+    "expected_faq": {"A": "KB-003", "B": "KB-003"}
+  },
+  {
+    "id": "P11",
+    "A": ["ช่วยชี้หน้า settings ของการแจ้งเตือนหน่อยครับ"],
+    "B": ["ช่วยชี้หน้า settings ของโหมดมืดหน่อยครับ"],
+    "expected_faq": {"A": null, "B": "KB-003"}
+  },
+  {
+    "id": "P12",
+    "prefix": ["All users in Asia get HTTP 500 now."],
+    "A": [],
+    "B": [],
+    "public_status": {"A": "operational", "B": "degraded"}
+  }
+]

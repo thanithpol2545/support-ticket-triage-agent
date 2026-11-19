@@ -109,6 +109,8 @@ python -m pytest -q
 
 The tests use fake OpenAI clients and an SDK mock transport. They exercise both required tools, all nine synthetic edge cases, scoped outages, multilingual negation, refund disputes and CLI failures. They verify the application and safety policy under simulated responses. [QA report](docs/qa-review.md)
 
+For the reviewer commands, use the [reproducible evaluation report](docs/evaluation-results.md). The optional `--audit` flag includes the configured and returned model identifiers, the proposal before policy, and the final result with tool calls from the same run. Audit output includes raw proposal and tool data for review.
+
 ## 4. Architecture
 
 ```mermaid

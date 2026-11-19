@@ -1,2 +1,3 @@
-include evaluation/adversarial_cases.json
+include evaluation/*.json evaluation/*.py
+include docs/external-evaluation-pilot.md docs/evaluation-results.md
 include tests/conftest.py

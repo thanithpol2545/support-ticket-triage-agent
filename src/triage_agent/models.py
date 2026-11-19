@@ -78,6 +78,13 @@ class TriageResult(StrictModel):
         return self
 
 
+class TriageAudit(StrictModel):
+    configured_model: str
+    response_model: str | None
+    proposal: AgentProposal
+    result: TriageResult
+
+
 # Strict JSON Schema for Responses API (every field is required).
 # Keep in sync with AgentProposal; validated locally with Pydantic on every result.
 PROPOSAL_JSON_SCHEMA = {

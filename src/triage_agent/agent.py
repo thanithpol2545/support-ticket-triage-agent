@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .models import AgentProposal, PROPOSAL_JSON_SCHEMA, Ticket, TriageResult
+from .models import AgentProposal, PROPOSAL_JSON_SCHEMA, Ticket, TriageAudit, TriageResult
 from .policy import finalize
 from .tools import TOOL_SCHEMAS, ToolRegistry, load_data
 
@@ -45,6 +45,9 @@ class GPTTriageAgent:
         self.client = client
 
     def run(self, ticket: Ticket) -> TriageResult:
+        return self.run_with_audit(ticket).result
+
+    def run_with_audit(self, ticket: Ticket) -> TriageAudit:
         tools = ToolRegistry(ticket)
         history: list[Any] = [{"role": "user", "content": json.dumps(ticket.model_dump(), ensure_ascii=False)}]
         # Forced tool choices guarantee both mandated tools are truly called, not just named in JSON.
@@ -100,5 +103,10 @@ class GPTTriageAgent:
                 proposal = AgentProposal.model_validate_json(content)
             except ValidationError:
                 raise AgentExecutionError("Invalid model output schema") from None
-            return finalize(ticket, proposal, tools)
+            return TriageAudit(
+                configured_model=self.model,
+                response_model=getattr(response, "model", None),
+                proposal=proposal,
+                result=finalize(ticket, proposal, tools),
+            )
         raise AgentExecutionError("Maximum tool rounds exceeded; no unsafe auto-response was produced")

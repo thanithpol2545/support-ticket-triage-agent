@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from typing import Literal
 
 from .models import AgentProposal, Ticket, TriageResult
 from .tools import ToolRegistry
@@ -85,6 +86,28 @@ _AFFECTED_GROUP = _MULTI_USER + _GROUP_REPORT_WORDS + r"\baffected\s*$"
 _DARK_DEFECT = re.compile(r"still\s+(?:shows?\s+)?light|not\s+working|doesn't\s+work|bug|ไม่ทำงาน", re.IGNORECASE)
 _APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light theme|appearance)\b|(?:โหมดมืด|ธีมมืด)"
 _CLAUSE_BREAK = re.compile(r"[.!?;\n,]|\b(?:but|however|yet)\b|แต่", re.IGNORECASE)
+_HYPOTHETICAL = re.compile(
+    r"\b(?:what\s+if|if|in\s+case|suppose|assuming)\b|ถ้า|หาก|สมมติว่า", re.IGNORECASE
+)
+_RECOVERY_PATTERNS = (
+    r"\b(?:everyone|all\s+(?:our\s+)?(?:users|employees|staff)|the\s+whole\s+team)\b"
+    + _SCOPE_LOCATION
+    + r"\s+(?:can|(?:are|is)\s+able\s+to)\s+(?:log\s*in|sign\s*in|access(?:\s+\w+){0,5})\s+(?:again|now)\b",
+    r"\b(?:the\s+)?(?:system|service|app|site)\s+(?:is\s+)?(?:back\s+up|back\s+online|restored)\b",
+    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)\s*กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?",
+    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)\s*(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้แล้ว",
+)
+_PASSWORD_REQUESTS = (
+    r"\b(?:send|share|provide|give|tell|disclose|submit|reply\s+with)\s+"
+    r"(?:(?:us|me|with\s+us|with\s+me)\s+)?"
+    r"(?:(?:your|the|current|existing|account|login)\s+){0,4}password\b",
+    r"(?:ส่ง|แชร์|แจ้ง|บอก|ระบุ)(?:\s|มา|ให้|เรา|ทีมงาน|เจ้าหน้าที่){0,8}รหัสผ่าน",
+)
+_PASSWORD_WARNING = re.compile(
+    r"(?:\b(?:never|not|don['’]t)\s+(?:(?:ever|ask(?:\s+you)?\s+to)\s+){0,2}"
+    r"|(?:อย่า|ห้าม|ไม่ต้อง|ไม่ควร|ไม่จำเป็นต้อง)(?:\s|เปิดเผย|ช่วย){0,8})$",
+    re.IGNORECASE,
+)
 # In Thai access predicates such as เข้าไม่ได้, the failure is already reported.
 # The suffix does not negate a separate symptom that follows it.
 _NEGATION = re.compile(
@@ -127,8 +150,10 @@ _PAYMENT_FAILURE_PATTERNS = (
 
 def _access_problem(ticket: Ticket) -> bool:
     """Affirmed service-access symptoms, even when only one user is affected."""
-    return any(_affirmed_pattern(message.text.lower(), pattern)
-               for message in ticket.messages for pattern in _OUTAGE_PATTERNS)
+    return any(
+        _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
+        for clause, _ in _outage_clauses([message.text for message in ticket.messages])
+    )
 
 
 def reports_dark_mode_scheduling(ticket: Ticket) -> bool:
@@ -154,32 +179,37 @@ def _floor_urgency(value: str, minimum: str) -> str:
 
 
 def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
-    """Yield each clause together with its terminating delimiter."""
+    """Keep the text before a condition so an earlier report still counts."""
     for message in messages:
         start = 0
         for boundary in _CLAUSE_BREAK.finditer(message):
-            yield message[start:boundary.start()], boundary.group()
+            yield _HYPOTHETICAL.split(message[start:boundary.start()], maxsplit=1)[0], boundary.group()
             start = boundary.end()
-        yield message[start:], ""
+        yield _HYPOTHETICAL.split(message[start:], maxsplit=1)[0], ""
 
 
-def _multi_user_outage(messages: list[str]) -> bool:
+def _multi_user_outage(messages: list[str]) -> Literal["active", "recovered"] | None:
+    state: Literal["active", "recovered"] | None = None
     symptom_reported = False
     for clause, delimiter in _outage_clauses(messages):
-        if any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_OUTAGE_PATTERNS):
-            return True
-        if delimiter != "?" and _affirmed_pattern(clause, _IMPACT_REPORT, negation=_IMPACT_REPORT_NEGATION):
-            return True
+        if delimiter != "?" and any(_affirmed_pattern(clause, pattern) for pattern in _RECOVERY_PATTERNS):
+            if state == "active":
+                state = "recovered"
+            symptom_reported = False
+            continue
         symptom_in_clause = _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
         symptom_reported = symptom_reported or symptom_in_clause
-        if symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP):
-            return True
-        if symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP):
-            return True
-    return False
+        if (
+            any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_OUTAGE_PATTERNS)
+            or (delimiter != "?" and _affirmed_pattern(clause, _IMPACT_REPORT, negation=_IMPACT_REPORT_NEGATION))
+            or (symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP))
+            or (symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP))
+        ):
+            state = "active"
+    return state
 
 
-def risk_signals(ticket: Ticket) -> tuple[bool, bool, bool]:
+def risk_signals(ticket: Ticket) -> tuple[Literal["active", "recovered"] | None, bool, bool]:
     messages = [m.text.lower() for m in ticket.messages]
     billing = any(_affirmed_pattern(m, p) for m in messages for p in _BILLING_PATTERNS) or reports_refund_dispute(ticket)
     outage = _multi_user_outage(messages)
@@ -210,11 +240,19 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
             changes.append("outage_requires_human_escalation")
         data["action"] = "escalate_to_human"
         data["assigned_team"] = "Infrastructure / On-call"
-        data["draft_response"] = (
-            "We understand that several users cannot access the system. "
-            "We are escalating your report to our incident team for urgent investigation. "
-            "The cause, regional scope and recovery time are pending confirmation."
-        )
+        # Keep the existing review of a broad outage while Support defines post-recovery routing.
+        if outage == "recovered":
+            data["draft_response"] = (
+                "Thank you for confirming that users can access the system again. "
+                "We are sharing the earlier interruption with our incident team for follow-up. "
+                "The cause and regional scope are pending confirmation."
+            )
+        else:
+            data["draft_response"] = (
+                "We understand that several users cannot access the system. "
+                "We are escalating your report to our incident team for urgent investigation. "
+                "The cause, regional scope and recovery time are pending confirmation."
+            )
         data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
             "Regional incident not confirmed", "Exact affected user count not verified"]))
         if billing:
@@ -326,6 +364,14 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
     if data["action"] != "auto_respond" and not data["assigned_team"]:
         changes.append("assigned_fallback_team")
         data["assigned_team"] = "General Support"
+
+    if any(
+        _affirmed_pattern(clause, pattern, negation=_PASSWORD_WARNING)
+        for clause in _CLAUSE_BREAK.split(data["draft_response"])
+        for pattern in _PASSWORD_REQUESTS
+    ):
+        data["draft_response"] = "Thank you for contacting support. For your security, please do not share your password."
+        changes.append("password_request_replaced_with_safe_draft")
 
     data["reasons"] = list(dict.fromkeys([*data["reasons"], *changes]))
     return TriageResult(

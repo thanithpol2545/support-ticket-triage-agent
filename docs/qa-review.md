@@ -24,3 +24,9 @@ The original ticket outcomes and synthetic fixture expectations are project acce
 ## Follow-up observations
 
 Prior QA observed that a specialist draft can retain a password request, four edge queries missed a relevant article when their text was used verbatim, and the appearance summary in the prior acceptance run omitted the System Default reproduction detail. Review draft text, retrieval recall and extraction during live evaluation. Reviewers need access to the private repository independently of these technical checks.
+
+## 2.1 External evaluation pilot
+
+The [BANKING77 pilot report](external-evaluation-pilot.md) documents the source, 16 sampled tickets and the scoring plan for `issue_types`. Fourteen tickets are ready for source-label scoring. Two await human label review. The pilot has no live GPT results.
+
+The [reproducible evaluation report](evaluation-results.md) records the later baseline comparison, retrieval probes and reviewer commands.
