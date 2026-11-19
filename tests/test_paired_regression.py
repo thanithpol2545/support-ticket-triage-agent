@@ -127,11 +127,13 @@ def test_audit_outage_draft_tracks_recovery_scope_and_order(updates, required, f
         ("Cebu office:\nObservations: all staff cannot sign in.\nTaipei office: all staff can sign in again.",
          None, "Cebu office", "Taipei office"),
         ("Bangkok:\nAll staff cannot sign in.\nTokyo:\nAll staff can sign in again.", None, "Bangkok", "Tokyo"),
+        ("Sapporo office:\nCustomer report:\nAll staff cannot sign in.\nOsaka office:\nRecovery notes:\nAll staff can sign in again.",
+         None, "Sapporo office", "Osaka office"),
     ],
     ids=["location-after-group", "location-before-group", "location-before-group-with-comma", "location-as-heading",
          "location-heading-with-time-modifier", "location-heading-on-separate-line", "location-heading-before-timestamp",
          "location-with-incident-subheading", "location-with-alternative-subheading", "location-with-custom-field-and-new-section",
-         "standalone-location-headings-in-one-message"],
+         "standalone-location-headings-in-one-message", "standalone-incident-fields-in-one-message"],
 )
 def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery, affected, recovered, run_audit):
     ticket = ticket_for(PAIRS["P12"], "A")
@@ -191,6 +193,10 @@ def test_audit_outage_draft_does_not_merge_different_countries(outage, recovery,
         pytest.param(
             "All users in Europe are getting HTTP 500 — if the regional on-call is unavailable, send this to the backup team.",
             True, id="affirmed-before-conditional-instruction",
+        ),
+        pytest.param(
+            "All users in Europe are getting HTTP 500 — if the lead is unavailable, hand this to the backup responder.",
+            True, id="affirmed-before-conditional-handoff",
         ),
         pytest.param(
             "All users in Asia get HTTP 500 — if the service goes down, right?",

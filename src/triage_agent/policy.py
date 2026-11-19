@@ -99,10 +99,11 @@ _HYPOTHETICAL = re.compile(rf"\bwhat\s+if\b|{_CONDITION_MARKER}", re.IGNORECASE)
 _POSTFIX_CONDITION = re.compile(rf"\s*(?:only\s+)?(?:{_CONDITION_MARKER})", re.IGNORECASE)
 _ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
 _REQUEST_START = re.compile(
-    r"\s*(?:please|what|when|where|who|how|(?:can|could|would|should|do|are)\s+(?:you|we)|"
-    r"let\s+(?:me|us)\s+know|(?:then\s+)?(?:do\s+not\s+)?"
+    r"\s*(?:(?:please|what|when|where|who|how)\b|(?:can|could|would|should|do|are)\s+(?:you|we)\b|"
+    r"let\s+(?:me|us)\s+know\b|(?:then\s+)?(?:do\s+not\s+)?(?:"
     r"(?:alert|ask|assign|call|check|contact|escalate|file|forward|inform|investigate|notify|"
-    r"open|page|ping|route|send|tell|triage))\b",
+    r"open|page|ping|route|send|tell|triage)\b|"
+    r"(?!(?:then|and|but|or|so|if|as|since|because|once|while|yet|now)\b)[a-z]+\s+(?:it|this|them|us|me)\b))",
     re.IGNORECASE,
 )
 _COORDINATED_FOLLOWUP = re.compile(
@@ -128,6 +129,7 @@ _SCOPE_HEADING = re.compile(
     r"^\s*(?!(?:status|update|report|alert|incident|outage|notes?|fyi|summary|context|question|example|"
     r"impact|recovery|resolution|affected\s+(?:users|accounts|areas?|regions?)|symptoms?|scope|workaround|"
     r"time|timeline|next\s+steps?|observations?|mitigation|current\s+assessment)\s*:)"
+    r"(?![\w -]*\b(?:reports?|notes?|summar(?:y|ies)|assessments?|timelines?)\b[\w -]*:)"
     rf"({_LOCATION})\s*:(?!\d)",
     re.IGNORECASE,
 )
