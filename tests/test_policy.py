@@ -44,7 +44,7 @@ def test_enterprise_error500_escalates_even_when_green_status(tickets):
     result = finalize(t, mock_proposal(urgency="low"), tools, "demo_rules")
     assert result.urgency == "critical"
     assert result.action == "escalate_to_human"
-    assert "region Asia" in result.draft_response
+    assert "regional scope" in result.draft_response
 
 
 def test_dark_bug_needs_specialist(tickets):
@@ -52,7 +52,7 @@ def test_dark_bug_needs_specialist(tickets):
     result = finalize(t, mock_proposal(urgency="low"), ToolRegistry(t), "demo_rules")
     assert result.urgency == "medium"
     assert result.action == "route_to_specialist"
-    assert "isn't confirmed" in result.draft_response
+    assert "Scheduled dark-mode support is unverified" in result.uncertainties
 
 
 def test_unverified_kb_citation_discarded_and_no_auto_response(tickets):
@@ -85,6 +85,9 @@ def test_failed_tool_disables_auto_response(tickets):
     result = finalize(t, mock_proposal(kb_article_ids=["KB-004"]), tools, "demo_rules")
     assert result.action == "route_to_specialist"
     assert "tool_failure_prevents_auto_response" in result.policy_overrides
+    assert "auto_response_replaced_with_approved_faq_template" not in result.policy_overrides
+    assert result.tools_used == ["search_knowledge_base"]
+    assert not result.tool_trace[-1].ok
 
 
 @pytest.mark.parametrize("level,expected_action", [

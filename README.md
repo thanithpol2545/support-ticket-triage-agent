@@ -85,20 +85,27 @@ Use an API key **from your own OpenAI account or a key supplied by the reviewer*
 **Windows PowerShell**:
 
 ```powershell
-$env:OPENAI_API_KEY="YOUR_OWN_KEY"
+$secureKey = Read-Host "OpenAI API key" -AsSecureString
+$env:OPENAI_API_KEY = [System.Net.NetworkCredential]::new("", $secureKey).Password
+Remove-Variable secureKey
 $env:OPENAI_MODEL="gpt-4.1-mini"
-python -m triage_agent --mode live --all
+python -m triage_agent --mode live --all --no-trace
+Remove-Item Env:OPENAI_API_KEY
 ```
 
 **macOS/Linux**:
 
 ```bash
-export OPENAI_API_KEY="YOUR_OWN_KEY"
+read -rs -p "OpenAI API key: " OPENAI_API_KEY; echo
+export OPENAI_API_KEY
 export OPENAI_MODEL="gpt-4.1-mini"
-python -m triage_agent --mode live --all
+python -m triage_agent --mode live --all --no-trace
+unset OPENAI_API_KEY
 ```
 
 `OPENAI_MODEL` can be changed to a compatible GPT model accessible to your account. `.env.example` documents the variables; the app reads **environment variables directly** and does not automatically load `.env`.
+
+OpenAI has announced retirement of the `gpt-4.1-mini-2025-04-14` snapshot on January 14, 2027. Check the provider's model lifecycle before choosing a deployment model. [OpenAI deprecations](https://developers.openai.com/api/docs/deprecations)
 
 ### Optional Typhoon evaluation (not a replacement for OpenAI GPT)
 
@@ -125,7 +132,7 @@ python scripts/evaluate_typhoon.py --include-edge --limit 12
 unset TYPHOON_API_KEY
 ```
 
-The optional evaluation fixture includes the 3 supplied tickets and 9 synthetic boundary cases. The harness reports predicted labels, decisions, tools and policy overrides **without printing the key**. Synthetic labels are proposed test expectations rather than certified production ground truth. A provider call can fail if the model/account does not support the requested forced tool choice; do not treat that as a successful classification. No live Typhoon request was completed in the review runtime because outbound DNS was unavailable.
+The optional evaluation fixture includes the 3 supplied tickets and 9 synthetic boundary cases. The harness reports the configured model, predicted labels, decisions, tools, policy overrides and per-ticket latency. Synthetic labels are proposed test expectations. Typhoon's public model list includes the configured model. Authenticated inference and named tool-choice support remain unverified in this review because a securely configured key was unavailable. [Typhoon models](https://docs.opentyphoon.ai/en/models/) · [Typhoon tool calling](https://docs.opentyphoon.ai/en/tool/)
 
 **Alternative network-enabled test:** In GitHub, configure **Settings → Secrets and variables → Actions → New repository secret** named `TYPHOON_API_KEY` (use a newly generated key). Then open **Actions → typhoon-real-api-smoke → Run workflow**. The manual workflow uses the repository secret, not a public workflow input, and runs three real-provider sample tickets by default. Do not place credentials into the Run Workflow form.
 
@@ -135,9 +142,9 @@ The optional evaluation fixture includes the 3 supplied tickets and 9 synthetic 
 python -m pytest -q
 ```
 
-The test suite uses **fake OpenAI/Typhoon clients** to validate function-call orchestration without credentials. `tests/test_e2e_regression.py` exercises all 9 synthetic edge cases through the actual CLI, plus Thai/English negations, true incidents, single-user failures and input errors. This is **not** a live API integration test.
+The test suite uses **fake OpenAI/Typhoon clients** to validate function-call orchestration without credentials. `tests/test_e2e_regression.py` exercises all 9 synthetic edge cases through the CLI, plus Thai and English contrast clauses, single-user failures, wider incidents, simultaneous outage and billing reports, refund disputes and input errors.
 
-Latest local verification (Python 3.13.5, 2026-11-18): **71 tests passed, 92% statement coverage**; the three supplied tickets and all 9 synthetic cases passed the offline/demo acceptance checks (**12/12**). These are engineering test fixtures, not a statistically representative model accuracy evaluation. Run `python -m pytest -q` to reproduce the test count on your machine; coverage requires the optional local `pytest-cov` package.
+See [the engineering review](docs/qa-review.md) for the baseline, regression results, packaging checks and open live-provider gates. Coverage reporting uses the optional local `pytest-cov` package.
 
 ### Custom ticket input
 
@@ -213,14 +220,14 @@ These labels are **proposed test baselines**, not ground truth provided by Ooca.
 - **Repeated charges:** never assert that money was captured or a refund issued without evidence; escalate to Billing.
 - **Enterprise outage:** escalate a multi-user HTTP 500; a green status page is not proof that the tenant is functioning. The enterprise has **45 seats**, not 45 proven affected people.
 - **Appearance defects:** route to a specialist if System Default does not work; don't invent scheduled dark-mode availability.
-- **Missing/unverified KB:** remove invented article IDs; prohibit automatic answers without grounded documents. Low-risk auto-response uses a **fixed approved FAQ template** only; arbitrary model text is never auto-replied.
+- **Missing/unverified KB:** discard invented article IDs and Appearance citations for unrelated tickets. Low-risk auto-response uses an approved template. The general template asks for clarification.
 - **Tool failure:** fail closed rather than invent a success; malformed KB data returns a tool error and prevents auto-response.
 - **Critical:** force human escalation, even if the model suggested only a specialist route.
-- **Language variants/negation:** demo and policy share incident detection, including Thai Unicode negations. This protects against simple false positives (e.g., "no duplicate charges", "no HTTP 500") without suppressing confirmed incidents in later clauses. Pattern matching still cannot fully understand natural-language nuance.
+- **Language variants and scope:** demo and policy share English and Thai incident checks. Affirmative group impact, including an explicit follow-up about the same error, is required for a multi-user outage. The heuristics cover selected phrasing. Review ambiguous reports and model outputs on labeled data.
 - **Single-user failures:** a first failed upgrade or access issue is at least `medium` and routed to a specialist; widespread outages remain `critical`.
 - **API failure, malformed JSON, wrong customer ID, max tool rounds:** return a visible error and stop instead of silently fabricating a triage result.
 - **Untrusted content:** customer messages and KB passages are data; the system prompt forbids obeying instructions embedded in them. This is a prompt-layer mitigation, not a guarantee against every injection.
-- **Privacy:** sample data is hypothetical. In production, redact PII in logs and implement authorization, retention and access controls before connecting real account records.
+- **Privacy:** schema diagnostics omit raw validation values. Full traces and result fields may include customer data. `--no-trace` omits tool arguments and results. Before connecting real account records, implement authorization, access controls, redaction and retention.
 
 ## 7. Project structure
 

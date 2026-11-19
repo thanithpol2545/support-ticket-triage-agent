@@ -10,15 +10,14 @@
     "sentiment": "angry",
     "action": "escalate_to_human",
     "assigned_team": "Billing Support",
-    "summary": "Customer reports repeated charges and no access to Pro after upgrade attempts.",
+    "summary": "Repeated charges reported by the customer.",
     "reasons": [
-      "Multiple charges reported",
-      "Time-sensitive Pro access"
+      "Repeated charges reported"
     ],
     "kb_article_ids": [
       "KB-001"
     ],
-    "draft_response": "I'm sorry about the repeated charges you reported and the missing Pro access. I'm escalating this to our billing specialists for urgent investigation. We cannot yet confirm whether the bank entries are settled or reversed; the team will review your account and transactions.",
+    "draft_response": "Thank you for reporting this billing issue. We are escalating it to Billing Support for review. The status of any charges or refunds is pending verification.",
     "uncertainties": [
       "Bank-side settlement unverified",
       "Bank charges and refunds not verified"
@@ -28,6 +27,74 @@
       "get_customer_history",
       "search_knowledge_base",
       "check_billing_status"
+    ],
+    "tool_trace": [
+      {
+        "name": "get_customer_history",
+        "arguments": {
+          "customer_id": "cust-free-001"
+        },
+        "result": {
+          "customer": {
+            "customer_id": "cust-free-001",
+            "plan": "Free",
+            "region": null,
+            "tenure_months": 4,
+            "seats": null,
+            "notes": "Upgrade attempted; first support contact"
+          },
+          "history": "Upgrade attempted; first support contact",
+          "source": "mock_customer_profile"
+        },
+        "ok": true
+      },
+      {
+        "name": "search_knowledge_base",
+        "arguments": {
+          "query": "My payment failed when I tried to upgrade to Pro. Can you check what's wrong? I tried again with a different card. Now I see TWO pending charges but my account still shows Free plan?? Okay this is getting ridiculous. Just checked my bank app - I have THREE charges of $29.99 now. None of them refunded. And I STILL don't have Pro access. HELLO?? Is anyone there??? I need this fixed NOW. I have a presentation in 2 hours and I need the Pro export features. If these charges aren't reversed by end of day I'm disputing all of them with my bank."
+        },
+        "result": {
+          "articles": [
+            {
+              "id": "KB-001",
+              "title": "Billing: failed upgrades and duplicate authorizations",
+              "excerpt": "If an upgrade is unsuccessful and the user reports multiple charges, do not promise a refund or assume the charges have settled. Verify transaction state through billing systems and refer to Billing Support for review. Pending authorizations and captured charges are not the same."
+            },
+            {
+              "id": "KB-002",
+              "title": "Service access: HTTP 500 troubleshooting",
+              "excerpt": "HTTP 500 indicates a server-side error. When multiple organization members report it, promptly escalate to the incident team. A global status page being green is not conclusive for an account-specific or regional incident. Regional diagnosis must be confirmed by infrastructure monitoring."
+            },
+            {
+              "id": "KB-004",
+              "title": "General getting-started questions",
+              "excerpt": "For straightforward questions with unambiguous documentation, provide a concise explanation and cite the relevant FAQ. For missing or uncertain details, ask for clarification or route to support."
+            }
+          ],
+          "source": "mock_kb"
+        },
+        "ok": true
+      },
+      {
+        "name": "check_billing_status",
+        "arguments": {
+          "customer_id": "cust-free-001"
+        },
+        "result": {
+          "customer_id": "cust-free-001",
+          "record": {
+            "plan": "Free",
+            "upgrade_attempted": true,
+            "transaction_review_status": "requires_billing_investigation",
+            "captured_charges_verified": null,
+            "refund_confirmed": false,
+            "notes": "Mock account record. Customer's bank-reported three charges are not verified by this record."
+          },
+          "source": "mock_billing",
+          "bank_side_verified": false
+        },
+        "ok": true
+      }
     ],
     "mode": "demo_rules"
   },
@@ -42,18 +109,15 @@
     "sentiment": "frustrated",
     "action": "escalate_to_human",
     "assigned_team": "Infrastructure / On-call",
-    "summary": "Thai enterprise customer reports multi-user access failure and a high-stakes demo.",
+    "summary": "Customer reports that multiple users cannot access the service.",
     "reasons": [
-      "HTTP 500",
-      "Multiple coworkers affected",
-      "Potential business impact"
+      "Multiple users reported unable to access the service"
     ],
     "kb_article_ids": [
       "KB-002"
     ],
-    "draft_response": "รับทราบปัญหาเข้าใช้งานไม่ได้และ HTTP 500 ที่หลายท่านพบครับ เราจะส่งต่อทีมเทคนิคเพื่อตรวจสอบโดยเร่งด่วน ขณะนี้ยังไม่สามารถยืนยันสาเหตุหรือสถานะของ region Asia ได้ครับ",
+    "draft_response": "We understand that several users cannot access the system. We are escalating your report to our incident team for urgent investigation. The cause, regional scope and recovery time are pending confirmation.",
     "uncertainties": [
-      "Regional scope unconfirmed",
       "Regional incident not confirmed",
       "Exact affected user count not verified"
     ],
@@ -62,6 +126,61 @@
       "get_customer_history",
       "search_knowledge_base",
       "check_system_status"
+    ],
+    "tool_trace": [
+      {
+        "name": "get_customer_history",
+        "arguments": {
+          "customer_id": "cust-ent-002"
+        },
+        "result": {
+          "customer": {
+            "customer_id": "cust-ent-002",
+            "plan": "Enterprise",
+            "region": "Thailand",
+            "tenure_months": 8,
+            "seats": 45,
+            "notes": "First critical issue"
+          },
+          "history": "First critical issue",
+          "source": "mock_customer_profile"
+        },
+        "ok": true
+      },
+      {
+        "name": "search_knowledge_base",
+        "arguments": {
+          "query": "ระบบเข้าไม่ได้ครับ ขึ้น error 500 ลองหลายเครื่องแล้ว ทั้ง Chrome, Safari, Firefox ผลเหมือนกันหมด เพื่อนร่วมงานก็เข้าไม่ได้เหมือนกัน ตอนนี้ลูกค้าโวยเข้ามาเยอะมาก เรามี demo กับลูกค้ารายใหญ่บ่ายนี้ ถ้าระบบไม่กลับมา deal นี้อาจจะหลุด เช็ค status.company.com แล้ว บอกว่า all systems operational แต่เราใช้งานไม่ได้จริงๆ ช่วยเช็คให้หน่อยได้ไหมครับ region Asia มีปัญหาหรือเปล่า?"
+        },
+        "result": {
+          "articles": [
+            {
+              "id": "KB-002",
+              "title": "Service access: HTTP 500 troubleshooting",
+              "excerpt": "HTTP 500 indicates a server-side error. When multiple organization members report it, promptly escalate to the incident team. A global status page being green is not conclusive for an account-specific or regional incident. Regional diagnosis must be confirmed by infrastructure monitoring."
+            }
+          ],
+          "source": "mock_kb"
+        },
+        "ok": true
+      },
+      {
+        "name": "check_system_status",
+        "arguments": {
+          "region": "Thailand"
+        },
+        "result": {
+          "region": "Asia",
+          "status": {
+            "public_status": "operational",
+            "regional_diagnostics": "unavailable",
+            "incident_confirmed": null,
+            "notes": "Mock status feed: public green status does not rule out tenant-specific incident."
+          },
+          "source": "mock_status"
+        },
+        "ok": true
+      }
     ],
     "mode": "demo_rules"
   },
@@ -76,23 +195,69 @@
     "sentiment": "concerned",
     "action": "route_to_specialist",
     "assigned_team": "Product Support",
-    "summary": "System Default is not following device dark appearance; customer also suggests scheduling.",
+    "summary": "Customer reports that dark mode does not work as expected.",
     "reasons": [
-      "Reproducible appearance problem",
-      "Separate feature request"
+      "Customer-reported appearance problem"
     ],
     "kb_article_ids": [
       "KB-003"
     ],
-    "draft_response": "Thanks for reporting this. Since System Default isn't following your Mac's appearance setting, our product support team can investigate. We also noted your scheduled dark-mode suggestion; its availability isn't confirmed in the documentation.",
+    "draft_response": "Thanks for reporting the appearance issue. Product Support can investigate how the app handles your appearance settings. Scheduled dark-mode availability is still unverified.",
     "uncertainties": [
-      "Scheduled mode not verified",
-      "Dark-mode schedule availability unverified"
+      "Scheduled dark-mode support is unverified"
     ],
     "policy_overrides": [],
     "tools_used": [
       "get_customer_history",
       "search_knowledge_base"
+    ],
+    "tool_trace": [
+      {
+        "name": "get_customer_history",
+        "arguments": {
+          "customer_id": "cust-pro-003"
+        },
+        "result": {
+          "customer": {
+            "customer_id": "cust-pro-003",
+            "plan": "Pro",
+            "region": null,
+            "tenure_months": 5,
+            "seats": null,
+            "notes": "Daily active user; no previous support tickets"
+          },
+          "history": "Daily active user; no previous support tickets",
+          "source": "mock_customer_profile"
+        },
+        "ok": true
+      },
+      {
+        "name": "search_knowledge_base",
+        "arguments": {
+          "query": "Hey, just wondering if you support dark mode? No rush 😊 Thanks for the reply! Oh nice, so it's in Settings > Appearance. Found it! But hmm I'm on Pro plan and I only see 'Light' and 'System Default' options. No dark mode toggle? Okay so I switched to 'System Default' and my Mac is set to dark mode, but your app still shows light theme. Is this a bug or am I missing something? Also random question while I have you - is there a way to schedule dark mode? Like auto-switch at 6pm? Some apps have that. Would be cool if you guys added it 👀"
+        },
+        "result": {
+          "articles": [
+            {
+              "id": "KB-003",
+              "title": "Appearance settings and dark mode diagnostics",
+              "excerpt": "Users can inspect Settings > Appearance. If the app does not follow System Default, record app version, operating system, and reproduction steps, then refer to Product Support. Availability of a separate Dark toggle and scheduled auto-switch is NOT confirmed by this knowledge base; do not claim those features exist."
+            },
+            {
+              "id": "KB-001",
+              "title": "Billing: failed upgrades and duplicate authorizations",
+              "excerpt": "If an upgrade is unsuccessful and the user reports multiple charges, do not promise a refund or assume the charges have settled. Verify transaction state through billing systems and refer to Billing Support for review. Pending authorizations and captured charges are not the same."
+            },
+            {
+              "id": "KB-004",
+              "title": "General getting-started questions",
+              "excerpt": "For straightforward questions with unambiguous documentation, provide a concise explanation and cite the relevant FAQ. For missing or uncertain details, ask for clarification or route to support."
+            }
+          ],
+          "source": "mock_kb"
+        },
+        "ok": true
+      }
     ],
     "mode": "demo_rules"
   }

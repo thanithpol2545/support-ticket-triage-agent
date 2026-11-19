@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import json
 import re
+from functools import cached_property
 from importlib.resources import files
-from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from typing import Annotated, Any
 
-from .models import Ticket, ToolTrace
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+
+from .models import StrictModel, Ticket, ToolTrace
 
 
 def load_data(filename: str) -> Any:
@@ -32,6 +34,19 @@ class BillingArgs(_Arguments):
 
 class StatusArgs(_Arguments):
     region: str = Field(min_length=1, max_length=80)
+
+
+_NonEmptyText = Annotated[str, Field(min_length=1)]
+
+
+class _KBArticle(StrictModel):
+    id: _NonEmptyText
+    title: _NonEmptyText
+    content: _NonEmptyText
+    keywords: list[_NonEmptyText] = Field(min_length=1)
+
+
+_KB_CATALOG = TypeAdapter(list[_KBArticle])
 
 
 TOOL_SCHEMAS = [
@@ -78,9 +93,12 @@ class ToolRegistry:
     def __init__(self, ticket: Ticket):
         self.ticket = ticket
         self.trace: list[ToolTrace] = []
-        self.kb = load_data("kb.json")
         self.billing = load_data("billing.json")
         self.status = load_data("system_status.json")
+
+    @cached_property
+    def kb(self) -> Any:
+        return load_data("kb.json")
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -95,29 +113,34 @@ class ToolRegistry:
                           "source": "mock_customer_profile"}
             elif name == "search_knowledge_base":
                 query = args.query.lower()
+                catalog = _KB_CATALOG.validate_python(self.kb)
+                if len({article.id for article in catalog}) != len(catalog):
+                    raise ValueError("Duplicate mock article IDs")
                 scored = []
-                for article in self.kb:
-                    score = sum(1 for kw in article["keywords"] if _match_keyword(query, kw))
+                for article in catalog:
+                    score = sum(1 for keyword in article.keywords if _match_keyword(query, keyword))
                     if score:
-                        scored.append((score, article["id"], article))
+                        scored.append((score, article.id, article))
                 scored.sort(key=lambda x: (-x[0], x[1]))
-                result = {"articles": [{"id": a["id"], "title": a["title"], "excerpt": a["content"]}
+                result = {"articles": [{"id": a.id, "title": a.title, "excerpt": a.content}
                                        for _, _, a in scored[:3]], "source": "mock_kb"}
             elif name == "check_billing_status":
                 result = {"customer_id": args.customer_id, "record": self.billing.get(args.customer_id),
                           "source": "mock_billing", "bank_side_verified": False}
             else:
                 region = args.region
-                if region.lower() in {"thailand", "asia-pacific", "apac"}:
-                    region = "Asia"
+                region_key = region.casefold()
+                if region_key in {"thailand", "asia-pacific", "apac"}:
+                    region_key = "asia"
+                region = next((key for key in self.status if key.casefold() == region_key), region)
                 if region not in self.status:
                     result = {"region": region, "status": None, "source": "mock_status",
                               "message": "No diagnostic record for this region"}
                 else:
                     result = {"region": region, "status": self.status[region], "source": "mock_status"}
             ok = True
-        except (ValidationError, ValueError, TypeError, KeyError, IndexError) as exc:
-            result = {"error": "Invalid tool input or mock data" if isinstance(exc, (KeyError, IndexError)) else str(exc), "source": "tool_error"}
+        except (ValueError, TypeError, KeyError, IndexError, OSError):
+            result = {"error": "Invalid tool input or unavailable mock data", "source": "tool_error"}
             ok = False
         self.trace.append(ToolTrace(name=name, arguments=arguments, result=result, ok=ok))
         return result

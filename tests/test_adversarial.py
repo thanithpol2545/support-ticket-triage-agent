@@ -80,3 +80,29 @@ def test_broken_kb_record_becomes_tool_error_not_unhandled_keyerror():
     assert tools.trace[-1].ok is False
     decision = finalize(t, proposal(kb_article_ids=["KB-X"]), tools, "demo_rules")
     assert decision.action == "route_to_specialist"
+
+
+@pytest.mark.parametrize('text', [
+    'How do I change my notification email in Settings?',
+    'I am not asking about dark mode. How do I change my notification email in Settings?',
+])
+def test_retrieved_appearance_faq_does_not_answer_an_unrelated_ticket(text):
+    t = ticket(text)
+    tools = ToolRegistry(t)
+    assert tools.call('search_knowledge_base', {'query': 'appearance settings'})['articles'][0]['id'] == 'KB-003'
+    decision = finalize(t, proposal(kb_article_ids=['KB-003']), tools, 'live_gpt')
+    assert decision.action == 'route_to_specialist'
+    assert decision.kb_article_ids == []
+
+
+def test_matching_appearance_faq_uses_template_instead_of_catalog_excerpt():
+    t = ticket('Where are the appearance settings?')
+    tools = ToolRegistry(t)
+    tools.kb = [{
+        'id': 'KB-003', 'title': 'Appearance', 'keywords': ['appearance'], 'content': 'UNTRUSTED_EXCERPT_MARKER',
+    }]
+    tools.call('search_knowledge_base', {'query': 'appearance'})
+    decision = finalize(t, proposal(kb_article_ids=['KB-003']), tools, 'live_gpt')
+    assert decision.action == 'auto_respond'
+    assert 'Settings > Appearance' in decision.draft_response
+    assert 'UNTRUSTED_EXCERPT_MARKER' not in decision.draft_response

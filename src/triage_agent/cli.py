@@ -53,8 +53,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(rendered + "\n", encoding="utf-8")
-        print(rendered)
+        try:
+            print(rendered)
+        except UnicodeEncodeError:
+            # Legacy Windows redirected streams may not support every ticket character.
+            print(json.dumps(payload, indent=2))
         return 0
-    except (ValueError, OSError, ValidationError, AgentExecutionError) as exc:
+    except ValidationError:
+        print("ERROR: Data failed schema validation. Check the ticket format and required fields.", file=sys.stderr)
+        return 2
+    except (ValueError, OSError, AgentExecutionError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

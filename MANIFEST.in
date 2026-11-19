@@ -1,0 +1,2 @@
+include evaluation/adversarial_cases.json
+include tests/conftest.py

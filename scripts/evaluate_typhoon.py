@@ -9,8 +9,8 @@ Expected labels for synthetic cases are proposals for evaluation, not a gold set
 from __future__ import annotations
 import argparse
 import json
-from importlib.resources import files
 from pathlib import Path
+from time import perf_counter
 
 from triage_agent.agent import AgentExecutionError, load_tickets
 from triage_agent.models import Customer, Message, Ticket
@@ -47,6 +47,7 @@ def main():
         return 2
     records=[]
     for ticket, (expected_urgency, expected_action) in fixtures(args.include_edge)[:args.limit]:
+        started = perf_counter()
         try:
             result=agent.run(ticket)
             match_urgency = result.urgency == expected_urgency
@@ -59,7 +60,9 @@ def main():
         except AgentExecutionError as exc:
             records.append({"ticket_id": ticket.ticket_id, "status": "error",
                 "error_type": type(exc).__name__, "details": str(exc)})
+        records[-1]["latency_ms"] = round((perf_counter() - started) * 1000)
     print(json.dumps({"provider": "typhoon", "real_api_test": True,
+        "model": agent.model,
         "important": "Synthetic expected labels are proposals, not human-annotated ground truth",
         "evaluated": len(records), "records": records}, ensure_ascii=False, indent=2))
     return 0 if all(r["status"] == "ok" and r["urgency_match"] and r["action_match"] for r in records) else 1
