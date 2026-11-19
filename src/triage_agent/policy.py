@@ -92,8 +92,8 @@ _HYPOTHETICAL = re.compile(
     re.IGNORECASE,
 )
 _COORDINATED_FOLLOWUP = re.compile(
-    r"\b(?:and|then)\s+(?:[\w'’-]+\s+){0,8}(?:know|wonder|ask|check|tell|confirm|see)"
-    r"(?:\s+(?:me|us))?\s*$",
+    r"\b(?:and|then)\s+(?:(?:please|(?:can|could|would|should)\s+(?:you|we|i))\b.*"
+    r"|(?:[\w'’-]+\s+){0,8}(?:know|wonder|ask|check|tell|confirm|see|advise)(?:\s+(?:me|us))?)\s*$",
     re.IGNORECASE,
 )
 _OUTAGE_SCOPE_SUBJECT = rf"(?:{_MULTI_USER}|\b(?:users|employees|staff|system|service|app|site)\b)"
@@ -110,6 +110,11 @@ _SCOPE_PREFIX = (
 )
 _LEADING_SCOPE = re.compile(_SCOPE_PREFIX + rf"\s+(?={_OUTAGE_SCOPE_SUBJECT})", re.IGNORECASE)
 _BARE_SCOPE = re.compile(_SCOPE_PREFIX + r"\s*$", re.IGNORECASE)
+_SCOPE_HEADING = re.compile(
+    rf"^\s*(?!(?:status|update|report|alert|incident|outage|note|fyi|summary)\s*:)"
+    rf"({_LOCATION})\s*:\s*(?={_OUTAGE_SCOPE_SUBJECT})",
+    re.IGNORECASE,
+)
 _REGION_NAME = (
     r"(?:\b(?:asia(?:[- ]pacific)?|apac|europe|eu|north america|south america|africa|oceania|australia)\b"
     r"|เอเชีย|ยุโรป)"
@@ -131,19 +136,24 @@ _RECOVERY_PATTERNS = (
     r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)(?:\s*ใน(?:เอเชีย|ยุโรป))?\s*"
     r"(?:กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?|(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้แล้ว)",
 )
-_PASSWORD_REQUESTS = (
-    r"\b(?:send|share|provide|give|tell|disclose|submit|reply\s+with)\s+"
-    r"(?:(?:with\s+)?(?:us|me|support|(?:our|the)\s+(?:support\s+)?team)(?:\s+with)?\s+)?"
-    r"(?:(?:your|the|current|existing|account|login)\s+){0,4}password\b",
-    r"\bconfirm\s+(?:(?:your|the|current|existing|account|login)\s+){0,4}password\b(?!\s+(?:reset|change)\b)",
-    r"\bwhat(?:\s+(?:is|was)|['’]s)\s+(?:(?:your|the|current|existing|account|login)\s+){0,4}"
-    r"password\b(?!\s+(?:reset|change)\b)",
-    r"(?:ส่ง|แชร์|แจ้ง|บอก|ระบุ)(?:\s|มา|ให้|เรา|ทีมงาน|เจ้าหน้าที่){0,8}รหัสผ่าน",
-)
-_PASSWORD_WARNING = re.compile(
-    r"(?:\b(?:never|not|don['’]t)\s+(?:(?:ever|ask(?:\s+you)?\s+to)\s+){0,2}"
-    r"|(?:อย่า|ห้าม|ไม่ต้อง|ไม่ควร|ไม่จำเป็นต้อง)(?:\s|เปิดเผย|ช่วย){0,8})$",
+_PASSWORD_REFERENCE = re.compile(r"\bpasswords?\b|รหัสผ่าน", re.IGNORECASE)
+_PASSWORD_OBJECT = r"(?:(?:your|the|current|existing|account|login)\s+){0,4}passwords?\b"
+_PASSWORD_WARNING_PREFIX = r"\b(?:never|do\s+not|don['’]t|should\s+not)\s+(?:ever\s+)?"
+_PASSWORD_WARNING = re.compile(_PASSWORD_WARNING_PREFIX + r"$", re.IGNORECASE)
+_SAFE_PASSWORD_REFERENCE = re.compile(
+    _PASSWORD_WARNING_PREFIX
+    + r"(?:send|share|provide|give|tell|disclose|submit|confirm|reveal|ask\s+for)\s+"
+    r"(?:(?:with\s+)?(?:us|me|support)(?:\s+with)?\s+)?"
+    + _PASSWORD_OBJECT
+    + r"|\b(?:reset|change)\s+" + _PASSWORD_OBJECT
+    + r"|(?:อย่า|ห้าม|ไม่ต้อง|ไม่ควร|ไม่จำเป็นต้อง)\s*(?:ส่ง|แชร์|แจ้ง|บอก|เปิดเผย|ระบุ)\s*รหัสผ่าน"
+    r"|(?:รีเซ็ต|เปลี่ยน)\s*รหัสผ่าน",
     re.IGNORECASE,
+)
+_PASSWORD_EXCEPTION = re.compile(r"\b(?:unless|except|only\s+if)\b|ยกเว้น", re.IGNORECASE)
+_PASSWORD_PRONOUN_REQUEST = (
+    r"\b(?:send|share|provide|give|tell|disclose|submit|reveal|paste)\s+(?:(?:us|me)\s+)?"
+    r"(?:it|the\s+new\s+one)\b"
 )
 # In Thai access predicates such as เข้าไม่ได้, the failure is already reported.
 # The suffix does not negate a separate symptom that follows it.
@@ -255,6 +265,7 @@ def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
         names = (
             _EXPLICIT_SCOPE.findall(clause)
             or _LEADING_SCOPE.findall(clause)
+            or _SCOPE_HEADING.findall(clause)
             or re.findall(_REGION_NAME, clause, re.IGNORECASE)
         )
         regions = {_REGION_NAMES.get(name.casefold(), name.title()) for name in names}
@@ -316,6 +327,20 @@ def _outage_draft(outage: _OutageEvidence) -> str:
         "We are escalating your report to our incident team for urgent investigation. "
         "The cause, regional scope and recovery time are pending confirmation."
     )
+
+
+def _unsafe_password_reference(draft: str) -> bool:
+    """Allow explicit non-disclosure warnings and self-service reset or change instructions."""
+    if not _PASSWORD_REFERENCE.search(draft):
+        return False
+    for clause in _CLAUSE_BREAK.split(draft):
+        if _affirmed_pattern(clause, _PASSWORD_PRONOUN_REQUEST, negation=_PASSWORD_WARNING):
+            return True
+        if _PASSWORD_EXCEPTION.search(clause) and _PASSWORD_REFERENCE.search(clause):
+            return True
+        if _PASSWORD_REFERENCE.search(_SAFE_PASSWORD_REFERENCE.sub("", clause)):
+            return True
+    return False
 
 
 def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> TriageResult:
@@ -453,11 +478,7 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
         changes.append("assigned_fallback_team")
         data["assigned_team"] = "General Support"
 
-    if any(
-        _affirmed_pattern(clause, pattern, negation=_PASSWORD_WARNING)
-        for clause in _CLAUSE_BREAK.split(data["draft_response"])
-        for pattern in _PASSWORD_REQUESTS
-    ):
+    if _unsafe_password_reference(data["draft_response"]):
         data["draft_response"] = "Thank you for contacting support. For your security, please do not share your password."
         changes.append("password_request_replaced_with_safe_draft")
 
