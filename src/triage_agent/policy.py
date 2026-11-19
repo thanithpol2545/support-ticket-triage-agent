@@ -91,11 +91,12 @@ _OUTAGE_CLAUSE_BREAK = re.compile(
     rf"(,\s*but\b(?=\s+only\s+if\b)|{_CLAUSE_BREAK.pattern}|[–—]|(?<=\s)-(?=\s))", re.IGNORECASE,
 )
 _OUTAGE_CONTINUATIONS = {",", ";", "-", "–", "—"}
-_HYPOTHETICAL = re.compile(
-    r"\b(?:what\s+if|if|unless|in\s+case|in\s+the\s+event\s+that|suppose|assuming)\b|ถ้า|หาก|สมมติว่า",
-    re.IGNORECASE,
+_CONDITION_MARKER = (
+    r"\b(?:if|unless|in\s+case|in\s+the\s+event\s+that|suppose|supposing|assuming|provided\s+that)\b"
+    r"|ถ้า|หาก|สมมติว่า"
 )
-_POSTFIX_CONDITION = re.compile(r"\s*(?:(?:only\s+)?if\b|unless\b|in\s+the\s+event\s+that\b|ถ้า|หาก)", re.IGNORECASE)
+_HYPOTHETICAL = re.compile(rf"\bwhat\s+if\b|{_CONDITION_MARKER}", re.IGNORECASE)
+_POSTFIX_CONDITION = re.compile(rf"\s*(?:only\s+)?(?:{_CONDITION_MARKER})", re.IGNORECASE)
 _ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
 _REQUEST_START = re.compile(
     r"\s*(?:please|what|when|where|who|how|(?:can|could|would|should)\s+(?:you|we)|let\s+(?:me|us)\s+know)\b",
@@ -121,7 +122,8 @@ _SCOPE_PREFIX = (
 _LEADING_SCOPE = re.compile(_SCOPE_PREFIX + rf"\s+(?={_OUTAGE_SCOPE_SUBJECT})", re.IGNORECASE)
 _BARE_SCOPE = re.compile(_SCOPE_PREFIX + r"\s*$", re.IGNORECASE)
 _SCOPE_HEADING = re.compile(
-    rf"^\s*(?!(?:status|update|report|alert|incident|outage|note|fyi|summary|context|question|example)\s*:)"
+    r"^\s*(?!(?:status|update|report|alert|incident|outage|notes?|fyi|summary|context|question|example|"
+    r"impact|recovery|symptoms?|scope|workaround|time|timeline|next\s+steps?)\s*:)"
     rf"({_LOCATION})\s*:(?!\d)",
     re.IGNORECASE,
 )
