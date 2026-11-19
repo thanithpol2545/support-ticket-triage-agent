@@ -2,7 +2,7 @@
 
 ตรวจวันที่ 19 พฤศจิกายน 2026 ที่ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` ผลหลังแก้วัดจาก working tree ที่ส่งมอบบน baseline นี้ การประมวลผลจริงยังใช้ GPT ผ่าน OpenAI Responses API
 
-**Offline ล่าสุดผ่าน 214 tests** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแรกผ่าน 153 tests ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
+**Offline ล่าสุดผ่าน 216 tests** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแรกผ่าน 153 tests ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
@@ -57,7 +57,8 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | `d980e98` | ตก 2 / ผ่าน 51 | ผ่าน 53/53 บน `b64c569` |
 | `b64c569` | ตก 4 / ผ่าน 53 | ผ่าน 57/57 บน `c40cc34` |
 | `c40cc34` | ตก 2 / ผ่าน 57 | ผ่าน 59/59 บน `ee27c5c` |
-| `ee27c5c` | ตก 2 / ผ่าน 59 | ผ่าน 61/61 ล่าสุด |
+| `ee27c5c` | ตก 2 / ผ่าน 59 | ผ่าน 61/61 บน `c28a22d` |
+| `c28a22d` | ตก 2 / ผ่าน 61 | ผ่าน 63/63 ล่าสุด |
 
 | เคส | ก่อนแก้ | หลังแก้ |
 | --- | --- | --- |
@@ -92,6 +93,8 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | รายงานสมมติที่ตามด้วย `if the login gateway goes offline, then the entire team will be locked out.` | `c40cc34` อ่านผลในเงื่อนไขเป็นคำขอและยกระดับเป็น `critical` | คงข้อเสนอ `low / route_to_specialist` ส่วนเหตุจริงที่ตามด้วยคำสั่ง incident ยังยกระดับ |
 | หัวข้อสำนักงานตามด้วย `Customer report:` หรือ `Recovery notes:` บนบรรทัดแยก | `ee27c5c` ใช้ชื่อฟิลด์เป็นชื่อพื้นที่ | คงขอบเขต Sapporo และ Osaka ตามชื่อสำนักงาน |
 | เหตุจริงก่อน `if the lead is unavailable, hand this to the backup responder.` | `ee27c5c` คงผลจำลอง `low / route_to_specialist` ผิด | แยกคำสั่งที่มีกรรมตรงออกจากรายงานเหตุ และคง escalation สำหรับเหตุจริง ส่วน `then the entire team ...` ยังถูกอ่านเป็นผลของเงื่อนไข |
+| `Current status:` และ `Recovery status:` ใต้หัวข้อ Chiang Mai และ Hanoi | `c28a22d` ใช้ชื่อฟิลด์เป็นสถานที่ | ร่างระบุว่า Hanoi กลับเข้าได้และการกู้คืนใน Chiang Mai ยังไม่ยืนยัน |
+| เหตุจริงก่อน `if the primary responder is unavailable, reach out to the backup.` | `c28a22d` ข้ามรายงานเหตุจริง | แยกคำสั่งส่งต่อที่ใช้กริยาหลายคำจากรายงานเหตุและยังยกระดับ |
 
 รันซ้ำด้วย `python -m pytest -q tests/test_paired_regression.py -k audit` เกณฑ์ P04–P07 มี **18 ข้อที่ประเมินได้** โดยตัด field ที่เป็น `pending` ออกจากตัวส่วน ยังไม่มีการให้คะแนนจาก GPT จริง [เกณฑ์ให้คะแนนราย A/B](paired-scoring-rubric.md)
 
@@ -136,7 +139,7 @@ python -m evaluation.banking77 verify
 python -m evaluation.paired probe
 ```
 
-`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน คำสั่ง PowerShell ด้านล่างโหลด Policy ของ `ee27c5c` แล้ว replay เทสต์ล่าสุดเพื่อได้ผล **2 ตก / 59 ผ่าน** สำหรับแถวก่อนหน้าให้ใช้ชุดเทสต์บน SHA ในคอลัมน์หลังแก้และตั้ง `revision` เป็น SHA ในคอลัมน์ก่อนแก้ ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
+`verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน คำสั่ง PowerShell ด้านล่างโหลด Policy ของ `c28a22d` แล้ว replay เทสต์ล่าสุดเพื่อได้ผล **2 ตก / 61 ผ่าน** สำหรับแถวก่อนหน้าให้ใช้ชุดเทสต์บน SHA ในคอลัมน์หลังแก้และตั้ง `revision` เป็น SHA ในคอลัมน์ก่อนแก้ ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
 
 ```powershell
 @'
@@ -146,7 +149,7 @@ from types import ModuleType
 import pytest
 from triage_agent import agent
 
-revision = "ee27c5cded00cb7a50e0ff394bd9d9ea43b12f59"
+revision = "c28a22db3ddca1360aa87250a47661ced333743d"
 path = "src/triage_agent/policy.py"
 baseline = ModuleType("triage_agent.baseline_policy")
 source = subprocess.check_output(["git", "show", f"{revision}:{path}"])

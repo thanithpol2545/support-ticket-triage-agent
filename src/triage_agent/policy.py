@@ -98,12 +98,15 @@ _CONDITION_MARKER = (
 _HYPOTHETICAL = re.compile(rf"\bwhat\s+if\b|{_CONDITION_MARKER}", re.IGNORECASE)
 _POSTFIX_CONDITION = re.compile(rf"\s*(?:only\s+)?(?:{_CONDITION_MARKER})", re.IGNORECASE)
 _ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
-_REQUEST_START = re.compile(
-    r"\s*(?:(?:please|what|when|where|who|how)\b|(?:can|could|would|should|do|are)\s+(?:you|we)\b|"
-    r"let\s+(?:me|us)\s+know\b|(?:then\s+)?(?:do\s+not\s+)?(?:"
+_INCIDENT_INSTRUCTION = (
     r"(?:alert|ask|assign|call|check|contact|escalate|file|forward|inform|investigate|notify|"
     r"open|page|ping|route|send|tell|triage)\b|"
-    r"(?!(?:then|and|but|or|so|if|as|since|because|once|while|yet|now)\b)[a-z]+\s+(?:it|this|them|us|me)\b))",
+    r"(?!(?:then|and|but|or|so|if|as|since|because|once|while|yet|now)\b)[a-z]+\s+"
+    r"(?:it|this|them|us|me|(?:out|back|over|off)\s+to|(?:up|in)\s+(?:touch\s+)?with)\b"
+)
+_REQUEST_START = re.compile(
+    r"\s*(?:(?:please|what|when|where|who|how)\b|(?:can|could|would|should|do|are)\s+(?:you|we)\b|"
+    rf"let\s+(?:me|us)\s+know\b|(?:then\s+)?(?:do\s+not\s+)?(?:{_INCIDENT_INSTRUCTION}))",
     re.IGNORECASE,
 )
 _COORDINATED_FOLLOWUP = re.compile(
@@ -129,7 +132,8 @@ _SCOPE_HEADING = re.compile(
     r"^\s*(?!(?:status|update|report|alert|incident|outage|notes?|fyi|summary|context|question|example|"
     r"impact|recovery|resolution|affected\s+(?:users|accounts|areas?|regions?)|symptoms?|scope|workaround|"
     r"time|timeline|next\s+steps?|observations?|mitigation|current\s+assessment)\s*:)"
-    r"(?![\w -]*\b(?:reports?|notes?|summar(?:y|ies)|assessments?|timelines?)\b[\w -]*:)"
+    r"(?![\w -]*\b(?:reports?|notes?|summar(?:y|ies)|assessments?|timelines?|status|updates?|"
+    r"impacts?|recovery|resolution|restoration|findings?|evidence|symptoms?|workarounds?)\b[\w -]*:)"
     rf"({_LOCATION})\s*:(?!\d)",
     re.IGNORECASE,
 )
