@@ -100,8 +100,9 @@ _POSTFIX_CONDITION = re.compile(rf"\s*(?:only\s+)?(?:{_CONDITION_MARKER})", re.I
 _ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
 _REQUEST_START = re.compile(
     r"\s*(?:please|what|when|where|who|how|(?:can|could|would|should|do|are)\s+(?:you|we)|"
-    r"let\s+(?:me|us)\s+know|(?:then\s+)?(?:do\s+not\s+)?[a-z]+\s+"
-    r"(?:this|that|it|the|an?|our|your|us|me|to|on[- ]call))\b",
+    r"let\s+(?:me|us)\s+know|(?:then\s+)?(?:do\s+not\s+)?"
+    r"(?:alert|ask|assign|call|check|contact|escalate|file|forward|inform|investigate|notify|"
+    r"open|page|ping|route|send|tell|triage))\b",
     re.IGNORECASE,
 )
 _COORDINATED_FOLLOWUP = re.compile(
@@ -125,7 +126,8 @@ _LEADING_SCOPE = re.compile(_SCOPE_PREFIX + rf"\s+(?={_OUTAGE_SCOPE_SUBJECT})", 
 _BARE_SCOPE = re.compile(_SCOPE_PREFIX + r"\s*$", re.IGNORECASE)
 _SCOPE_HEADING = re.compile(
     r"^\s*(?!(?:status|update|report|alert|incident|outage|notes?|fyi|summary|context|question|example|"
-    r"impact|recovery|resolution|affected\s+(?:users|areas?|regions?)|symptoms?|scope|workaround|time|timeline|next\s+steps?)\s*:)"
+    r"impact|recovery|resolution|affected\s+(?:users|accounts|areas?|regions?)|symptoms?|scope|workaround|"
+    r"time|timeline|next\s+steps?|observations?|mitigation|current\s+assessment)\s*:)"
     rf"({_LOCATION})\s*:(?!\d)",
     re.IGNORECASE,
 )
@@ -250,7 +252,8 @@ def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
                 heading = _SCOPE_HEADING.match(clause)
                 # An established scope survives inline fields until a clearly named location changes it.
                 if heading and (
-                    not section_scope or _LOCATION_LABEL.search(heading[1])
+                    not section_scope or (delimiter == "\n" and not clause[heading.end():].strip())
+                    or _LOCATION_LABEL.search(heading[1])
                     or re.fullmatch(_REGION_NAME, heading[1], re.IGNORECASE)
                 ):
                     section_scope = heading.group().strip()
