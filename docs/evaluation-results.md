@@ -1,5 +1,12 @@
 # Evaluation results
 
+## Submission verification
+
+The Python CLI passed **3/3 supplied OOCA tickets** and **20/20 synthetic challenge cases** on implementation commit `feb0f27`, using OpenAI Responses API model `gpt-4.1-mini-2025-04-14`. All 23 tickets completed the required customer-history and knowledge-base lookups using project fixtures. The same 20 challenge cases scored 11/20 on `5f06d22` under the same rubric. Independent offline QA passed 9 language probes and 4 access-routing controls. The full suite passed 260 tests.
+
+The change distinguishes reported individual access failures from outages with confirmed group impact. It preserves the latest reported status in handoff drafts and attributes pending charges and refund updates to customer evidence. The challenge set is a development set used to find regressions. Results measure those cases and their specified criteria. Model-generated internal summaries may still need human review before use in production.
+
+## Earlier live evaluation
 
 On commit `3a63297`, the Python CLI called the OpenAI Responses API with `gpt-4.1-mini-2025-04-14`. The seven distinct tickets below passed their acceptance criteria. Every ticket completed both customer-history and knowledge-base calls. The tools used repository fixtures. The full offline suite passed 229 tests.
 
