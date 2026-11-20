@@ -1,37 +1,10 @@
 # Support Ticket Triage Agent
 
-> **Ooca AI Engineer take-home assignment** · Python CLI · GPT + real function calling · read-only mock tools · safety-gated triage.
+A Python CLI that reads a Thai or English support conversation, calls tools through OpenAI GPT and returns a triage decision with supporting evidence.
 
-[![tests](https://github.com/thanithpol2545/support-ticket-triage-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/thanithpol2545/support-ticket-triage-agent/actions/workflows/tests.yml)
+Start with the [one-page design write-up](docs/architecture.md) for the architecture, failure handling and production evaluation plan. The [evaluation report](docs/evaluation-results.md) includes observed results and reproduction commands.
 
-## 1. Purpose and assignment coverage
-
-An AI agent that reads an **entire chronological customer-support ticket**, investigates relevant facts using tools, and recommends an appropriate support action. The original Word assignment is the source of truth; this table maps each requirement to implementation.
-
-| Original requirement | Implementation | Verification |
-|---|---|---|
-| Classify urgency into **exactly** `critical / high / medium / low` | `Urgency` constrained type + decision policy | `tests/test_models.py`, `tests/test_policy.py` |
-| Extract **product, issue type, customer sentiment** | `AgentProposal` and `TriageResult` Pydantic models | Schema and CLI tests |
-| Search knowledge base for relevant **FAQs/docs** | `search_knowledge_base`, scored keyword retrieval of mock articles | `tests/test_tools.py` |
-| Choose **auto-respond / route to specialist / escalate to human** | `Action` constrained type + deterministic safety policy | `tests/test_policy.py` |
-| Use **at least two tools** | GPT is forced to invoke `get_customer_history`, then `search_knowledge_base`; optional billing/status tools | `tests/test_agent.py` verifies function calls and returned tool results |
-| Working code on supplied tickets | CLI with three verbatim chronological threads | `python -m triage_agent --all` |
-| System prompt | `src/triage_agent/prompts/system.md` | Tracked in Git |
-| Tool schemas + implementation (may be mocked) | `src/triage_agent/tools.py` | Contract tests |
-| One-page architecture / failures / production evaluation | `docs/architecture.md` | Reviewer write-up |
-| README with setup/run instructions; GitHub source | This repository | Quick Start below |
-
-**Scoring criteria:** readability, maintainability, extensibility and logic. **No chat UI is required**; the terminal interface is intentional.
-
-## 2. Runtime
-
-Every ticket goes through the OpenAI Responses API with function calling and strict structured output. Pydantic validates the proposal, and Python safety rules check the resulting decision. Running the CLI on tickets requires an authorized `OPENAI_API_KEY` and network access.
-
-The four read-only mock tools provide account history, FAQ search, billing status and system status. The agent reads English and Thai ticket threads. The output is a recommendation and draft for support staff. Mock records cannot verify a real charge, refund or incident.
-
-**Authenticated OpenAI verified on `b66052b`.** The CLI evaluated 46 tickets with `gpt-4.1-mini-2025-04-14`. Later policy changes have offline replay evidence. An authenticated run of those changes is pending. [Evaluation results](docs/evaluation-results.md)
-
-## 3. Quick Start
+## Quick Start
 
 Python **3.11+** is recommended. No Docker, DB server or UI is required.
 
@@ -111,7 +84,34 @@ The tests use fake OpenAI clients and an SDK mock transport. They exercise both 
 
 For the reviewer commands, use the [reproducible evaluation report](docs/evaluation-results.md). The optional `--audit` flag includes the configured and returned model identifiers, the proposal before policy, and the final result with tool calls from the same run. Audit output includes raw proposal and tool data for review.
 
-## 4. Architecture
+## Purpose and assignment coverage
+
+An AI agent that reads an **entire chronological customer-support ticket**, investigates relevant facts using tools, and recommends an appropriate support action. The original Word assignment is the source of truth; this table maps each requirement to implementation.
+
+| Original requirement | Implementation | Verification |
+|---|---|---|
+| Classify urgency into **exactly** `critical / high / medium / low` | `Urgency` constrained type + decision policy | `tests/test_models.py`, `tests/test_policy.py` |
+| Extract **product, issue type, customer sentiment** | `AgentProposal` and `TriageResult` Pydantic models | Schema and CLI tests |
+| Search knowledge base for relevant **FAQs/docs** | `search_knowledge_base`, scored keyword retrieval of mock articles | `tests/test_tools.py` |
+| Choose **auto-respond / route to specialist / escalate to human** | `Action` constrained type + deterministic safety policy | `tests/test_policy.py` |
+| Use **at least two tools** | GPT is forced to invoke `get_customer_history`, then `search_knowledge_base`; optional billing/status tools | `tests/test_agent.py` verifies function calls and returned tool results |
+| Working code on supplied tickets | CLI with three verbatim chronological threads | `python -m triage_agent --all` |
+| System prompt | `src/triage_agent/prompts/system.md` | Tracked in Git |
+| Tool schemas + implementation (may be mocked) | `src/triage_agent/tools.py` | Contract tests |
+| One-page architecture / failures / production evaluation | `docs/architecture.md` | Reviewer write-up |
+| README with setup/run instructions; GitHub source | This repository | Quick Start below |
+
+**Scoring criteria:** readability, maintainability, extensibility and logic. **No chat UI is required**; the terminal interface is intentional.
+
+## Runtime
+
+Every ticket goes through the OpenAI Responses API with function calling and strict structured output. Pydantic validates the proposal, and Python safety rules check the resulting decision. Running the CLI on tickets requires an authorized `OPENAI_API_KEY` and network access.
+
+The four read-only mock tools provide account history, FAQ search, billing status and system status. The agent reads English and Thai ticket threads. The output is a recommendation and draft for support staff. Mock records cannot verify a real charge, refund or incident.
+
+At `3a63297`, the CLI passed the live acceptance criteria for the three supplied tickets and four targeted cases with `gpt-4.1-mini-2025-04-14`. The offline suite passed 229 tests. [Evaluation results](docs/evaluation-results.md)
+
+## Architecture
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ Tool definitions use strict JSON function schemas; every invocation is recorded 
 | `kb_article_ids`, `tools_used`, `policy_overrides` | Retained citations, successful tool names and safety adjustments |
 | `tool_trace` | Tool arguments, results and success flags. Omitted by `--no-trace`. |
 
-## 5. Supplied test scenarios and expected behavior
+## Supplied test scenarios and expected behavior
 
 | Case | Description | Target baseline | Rationale |
 |---|---|---|---|
@@ -186,7 +186,7 @@ Tool definitions use strict JSON function schemas; every invocation is recorded 
 
 These labels are **proposed test baselines**, not ground truth provided by Ooca. `low` is tested separately for straightforward questions to cover **all four required urgency values**.
 
-## 6. Safety and failure handling
+## Safety and failure handling
 
 - **Repeated charges:** never assert that money was captured or a refund issued without evidence; escalate to Billing.
 - **Enterprise outage:** escalate a multi-user HTTP 500; a green status page is not proof that the tenant is functioning. The enterprise has **45 seats**, not 45 proven affected people.
@@ -200,7 +200,7 @@ These labels are **proposed test baselines**, not ground truth provided by Ooca.
 - **Untrusted content:** customer messages and KB passages are data; the system prompt forbids obeying instructions embedded in them. This is a prompt-layer mitigation, not a guarantee against every injection.
 - **Privacy:** schema diagnostics omit raw validation values. Full traces and result fields may include customer data. `--no-trace` omits tool arguments and results. Before connecting real account records, implement authorization, access controls, redaction and retention.
 
-## 7. Project structure
+## Project structure
 
 ```text
 src/triage_agent/
@@ -222,24 +222,10 @@ docs/qa-review.md          # reviewer-style design risks and acceptance gates
 pyproject.toml
 ```
 
-## 8. Production evaluation and limitations
+## Production evaluation and limitations
 
 See `docs/architecture.md` for the **one-page submission write-up**. In a real rollout, use human-labeled ticket sets (including Thai/English), evaluate **critical recall**, macro-F1 for urgency, routing accuracy, unsafe auto-response rate, grounded KB citation rate, tool failure rate, latency and token cost. Review false negatives in critical/billing tickets first. Add confidence-based handoff, monitoring, access control and redaction before production.
 
-**Known limitations:** tiny mock knowledge base, keyword-based FAQ retrieval, three provided sample tickets, no live billing/monitoring integrations, no live OpenAI API call performed in this workspace. Do not infer real-world reliability from the local unit test count.
-
-## 9. Submission checklist
-
-- [x] All five assignment functional requirements represented in runnable code
-- [x] Three original chronological sample ticket fixtures
-- [x] OpenAI GPT tool-calling implementation, no API key embedded
-- [x] Version-controlled system prompt and function tool schemas
-- [x] CLI, Pydantic validation, deterministic safeguards and offline tests
-- [x] One-page architecture / risks / production evaluation write-up
-- [x] Full-path regression tests for original tickets, 9 additional synthetic cases, Thai/English negation, empty inputs and safe provider errors
-- [ ] **Live API smoke test with an authorized `OPENAI_API_KEY`**
-- [ ] Confirm reviewer access to private GitHub repository
-
----
+**Known limitations:** tiny mock knowledge base, keyword-based FAQ retrieval, three provided sample tickets, no live billing/monitoring integrations. Do not infer real-world reliability from the local unit test count.
 
 **Documentation sources:** [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling) · [Structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs)

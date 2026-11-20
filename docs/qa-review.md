@@ -1,6 +1,8 @@
 # QA Evidence for the Ooca Assignment
 
-This review covers the OpenAI-only CLI based on main commit `2a07a65a966818b7091a35c34ed975876b54c355`. Every supported ticket selection calls the same GPT agent. The Responses API supplies a proposal after two successful required tool calls. Pydantic validates it before the shared safety policy selects the final action.
+For the submission results on merged main, see the [live evaluation](evaluation-results.md#submission-verification-on-merged-main).
+
+This historical review covers the OpenAI-only CLI based on main commit `2a07a65a966818b7091a35c34ed975876b54c355`. Every supported ticket selection calls the same GPT agent. The Responses API supplies a proposal after two successful required tool calls. Pydantic validates it before the shared safety policy selects the final action.
 
 ## Verification
 

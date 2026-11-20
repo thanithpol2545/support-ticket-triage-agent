@@ -1,10 +1,27 @@
 # OOCA Evaluation สำหรับผู้ตรวจ
 
+## Submission verification on merged main
+
+On commit `3a63297`, the Python CLI called the OpenAI Responses API with `gpt-4.1-mini-2025-04-14`. The seven distinct tickets below passed their acceptance criteria. Every ticket completed both customer-history and knowledge-base calls. The tools used repository fixtures. The full offline suite passed 229 tests.
+
+| Live case | Observed final decision or draft |
+|---|---|
+| TICKET-001 | High, escalated to Billing Support. Charges and refunds remain unverified. |
+| TICKET-002 | Critical, escalated to Infrastructure / On-call. Regional scope and recovery time remain open. |
+| TICKET-003 | Medium, routed to Product Support. Scheduled dark mode remains unconfirmed. |
+| P05A | The draft distinguishes repeated attempts to pay from confirmed charges. |
+| P07B | The System Default defect is routed to Product Support at medium urgency. |
+| P11A | The notification question is routed to General Support without Appearance advice or a citation. |
+| P11B | The dark-mode question receives the approved Appearance guidance from KB-003. |
+
+Independent live runs repeated P05A/P07B and P11A/P11B. The P11A proposal that *already requests a handoff* was verified by offline replay. The 46-ticket results below describe an earlier commit and include the external pilot.
+
+
 ผล offline รอบแรกวันที่ 19 พฤศจิกายน 2026 ใช้ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` และผ่าน 153 tests
 
 **Authenticated OpenAI รันสำเร็จบน `b66052be7478071148bee0ea793abf6052525e2e`** วันที่ 20 พฤศจิกายน 2026 เวลาไทย CLI `--audit` ส่ง 46 tickets ผ่าน OpenAI Responses API โดยตั้ง `gpt-4.1-mini` และได้ `gpt-4.1-mini-2025-04-14` ครบทุกเคส รวม 3 ticket ต้นฉบับ, 9 edge fixtures, 20 paired tickets และ 14 BANKING77 tickets ทั้ง 46 เคสใช้ `get_customer_history` และ `search_knowledge_base` สำเร็จ เครื่องมือและข้อมูลลูกค้าใช้ fixture ของโครงการ
 
-**Offline ล่าสุดผ่าน 229 tests** บน Python 3.11 รวม regression ของ P11 รอบนี้ ส่วนแพตช์ P05/P07 ที่ `6a93e0c` ผ่าน 224 tests รวม 7 เคสจาก live baseline และ 1 สำนวนอิสระที่ใช้ proposal กับลำดับ tool calls เดิมผ่าน CLI `--audit` ด้วย Responses API จำลอง Authenticated run ของแพตช์ล่าสุดยังเป็น `NOT VERIFIED`
+**Offline ล่าสุดผ่าน 229 tests** บน Python 3.11 รวม regression ของ P11 รอบนี้ ส่วนแพตช์ P05/P07 ที่ `6a93e0c` ผ่าน 224 tests รวม 7 เคสจาก live baseline และ 1 สำนวนอิสระที่ใช้ proposal กับลำดับ tool calls เดิมผ่าน CLI `--audit` ด้วย Responses API จำลอง
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
