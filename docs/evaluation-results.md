@@ -1,24 +1,28 @@
 # OOCA Evaluation สำหรับผู้ตรวจ
 
-ตรวจวันที่ 19 พฤศจิกายน 2026 ที่ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` ผลหลังแก้วัดจาก working tree ที่ส่งมอบบน baseline นี้ การประมวลผลจริงยังใช้ GPT ผ่าน OpenAI Responses API
+ผล offline รอบแรกวันที่ 19 พฤศจิกายน 2026 ใช้ baseline `aacbe28bc92b352ee59e1bcff76b7013844386ba` ซึ่งมี tree ตรงกับ `origin/main` ที่ `9c2114ac46680bd81f8382d9bea3cf4c542a66f8` และผ่าน 153 tests
 
-**Offline ล่าสุดผ่าน 216 tests** บน Python 3.11 รวมการทดสอบ audit ผ่าน CLI ทั้งสองแบบกับ Responses API จำลอง และการตรวจตัวประเมินด้วยผลที่กำหนดเอง รอบแรกผ่าน 153 tests ส่วน **GPT end-to-end เป็น NOT VERIFIED** เพราะสภาพแวดล้อมไม่มี `OPENAI_API_KEY` ที่ได้รับอนุญาต CLI คืน exit code 2 และไม่สร้างไฟล์ผล
+**Authenticated OpenAI รันสำเร็จบน `b66052be7478071148bee0ea793abf6052525e2e`** วันที่ 20 พฤศจิกายน 2026 เวลาไทย CLI `--audit` ส่ง 46 tickets ผ่าน OpenAI Responses API โดยตั้ง `gpt-4.1-mini` และได้ `gpt-4.1-mini-2025-04-14` ครบทุกเคส รวม 3 ticket ต้นฉบับ, 9 edge fixtures, 20 paired tickets และ 14 BANKING77 tickets ทั้ง 46 เคสใช้ `get_customer_history` และ `search_knowledge_base` สำเร็จ เครื่องมือและข้อมูลลูกค้าใช้ fixture ของโครงการ
+
+**แพตช์หลัง live ผ่าน 223 tests** บน Python 3.11 รวม 7 เคสที่ replay proposal กับลำดับ tool calls จาก live baseline ผ่าน CLI `--audit` ด้วย Responses API จำลอง ยังไม่มี authenticated run บนแพตช์หลังแก้ จึงใช้ `NOT VERIFIED` สำหรับผล live ของแพตช์นี้
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
-| Ticket | Expected urgency / action / team | Baseline → หลังแก้ผ่าน CLI จำลอง | GPT live |
+| Ticket | Expected urgency / action / team | Baseline → หลังแก้ผ่าน CLI จำลอง | GPT live บน `b66052b` |
 |---|---|---|---|
-| TICKET-001 | `high / escalate_to_human / Billing Support` | ตรง → ตรง | ยังไม่ได้รัน |
-| TICKET-002 | `critical / escalate_to_human / Infrastructure / On-call` | ตรง → ตรง | ยังไม่ได้รัน |
-| TICKET-003 | `medium / route_to_specialist / Product Support` | ตรง → ตรง | ยังไม่ได้รัน |
+| TICKET-001 | `high / escalate_to_human / Billing Support` | ตรง → ตรง | ตรง ข้อเสนอและผลสุดท้ายใช้ routing เดียวกัน `check_billing_status` สำเร็จ ร่างแจ้งว่ารายการยังรอตรวจสอบ |
+| TICKET-002 | `critical / escalate_to_human / Infrastructure / On-call` | ตรง → ตรง | ตรง Policy ยกระดับจาก `high` เป็น `critical` และกำหนดทีม `Infrastructure / On-call` `check_system_status` สำเร็จ ร่างยังเว้นขอบเขตภูมิภาคไว้ |
+| TICKET-003 | `medium / route_to_specialist / Product Support` | ตรง → ตรง | ตรง Policy เปลี่ยนจาก `low / auto_respond` เป็นส่ง Product Support ร่างแยกปัญหา Appearance จากคำถามตั้งเวลา |
+
+เหตุผลภายในของ TICKET-001 ใช้คำว่า `unauthorized charges` ทั้งที่ต้นฉบับรองรับเพียงว่าลูกค้ารายงานหลายรายการและยังไม่ยืนยันยอดกับธนาคาร ร่างที่ลูกค้าเห็นระบุว่ารอการตรวจสอบ รายงานแยกข้อสังเกตนี้จากผล routing ที่ผ่าน 3/3 และจากสองข้อที่แก้ในแพตช์
 
 ## 2. เก้า edge fixtures
 
-| Metric ใน CLI จำลอง | Baseline | หลังแก้ | GPT live |
+| Metric | Baseline CLI จำลอง | หลังแก้ CLI จำลอง | GPT live บน `b66052b` |
 |---|---:|---:|---|
-| Urgency ตรงกับ expected | 9/9 | 9/9 | ยังไม่ได้รัน |
-| Action ตรงกับ expected | 6/6 | 6/6 | ยังไม่ได้รัน |
-| History และ KB เรียกสำเร็จ | 9/9 | 9/9 | ยังไม่ได้รัน |
+| Urgency ตรงกับ expected | 9/9 | 9/9 | 9/9 |
+| Action ตรงกับ expected | 6/6 | 6/6 | 6/6 |
+| History และ KB เรียกสำเร็จ | 9/9 | 9/9 | 9/9 |
 
 ในสามแถวที่ `expected_action` เป็น `null` fixture ไม่กำหนด action ที่ต้องตรง [เก้า fixtures](../evaluation/adversarial_cases.json)
 
@@ -96,7 +100,22 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | `Current status:` และ `Recovery status:` ใต้หัวข้อ Chiang Mai และ Hanoi | `c28a22d` ใช้ชื่อฟิลด์เป็นสถานที่ | ร่างระบุว่า Hanoi กลับเข้าได้และการกู้คืนใน Chiang Mai ยังไม่ยืนยัน |
 | เหตุจริงก่อน `if the primary responder is unavailable, reach out to the backup.` | `c28a22d` ข้ามรายงานเหตุจริง | แยกคำสั่งส่งต่อที่ใช้กริยาหลายคำจากรายงานเหตุและยังยกระดับ |
 
-รันซ้ำด้วย `python -m pytest -q tests/test_paired_regression.py -k audit` เกณฑ์ P04–P07 มี **18 ข้อที่ประเมินได้** โดยตัด field ที่เป็น `pending` ออกจากตัวส่วน ยังไม่มีการให้คะแนนจาก GPT จริง [เกณฑ์ให้คะแนนราย A/B](paired-scoring-rubric.md)
+รันซ้ำด้วย `python -m pytest -q tests/test_paired_regression.py -k audit` เกณฑ์ P04–P07 มี **18 ข้อที่ประเมินได้** โดยตัด field ที่เป็น `pending` ออกจากตัวส่วน [เกณฑ์ให้คะแนนราย A/B](paired-scoring-rubric.md)
+
+### ผล live P04–P07 บน `b66052b` และ replay หลังแก้
+
+| เคส | ผล authenticated บน `b66052b` | ผล replay หลังแก้ |
+|---|---|---|
+| P04A | Summary เก็บ HTTP 500 และการถามว่าคนอื่นเจอหรือไม่ ผล routing เป็น `high / route_to_specialist / Technical Support` เกณฑ์กำหนด `medium` | อยู่นอกชุด replay ของแพตช์นี้ |
+| P04B | Summary ระบุผู้ใช้หลายคน แต่ขาดการยืนยันจากทีมอื่น ผลเป็น `high / escalate_to_human / incident_response` เทียบกับ `critical / escalate_to_human / Infrastructure / On-call` | อยู่นอกชุด replay ของแพตช์นี้ |
+| P05A | Summary บอกว่ากดจ่ายสามครั้งและยังไม่มียอดยืนยัน ร่างตอบกลับยืนยันว่ามีการจ่ายซ้ำ `check_billing_status` ไม่มี record และ `bank_side_verified=false` | Summary และร่างแยกการพยายามจ่ายสามครั้งจากยอดที่ยังรอตรวจสอบ การตัดสิน routing ยังเป็น `pending` ตาม rubric |
+| P05B | GPT เก็บว่าลูกค้ารายงานถูกเรียกเก็บสามครั้งและใช้ `high / escalate_to_human / billing_support` ร่างส่งให้ตรวจยอด | คง `high / escalate_to_human` ไป `Billing Support` โดยระบุแหล่งว่าเป็นใบแจ้งยอดที่ลูกค้ารายงาน และเว้นการยืนยันยอดกับการคืนเงิน |
+| P06A | เก็บการปฏิเสธคืนเงินและข้อโต้แย้งที่ยังดำเนินอยู่ ส่ง `high / escalate_to_human / Billing Support` | อยู่นอกชุด replay ของแพตช์นี้ |
+| P06B | Summary เก็บว่าถอนข้อโต้แย้งแล้ว ร่างยังใช้ข้อความส่ง Billing ทั่วไปและขาดการรับทราบการถอน เกณฑ์ routing หลังถอนเป็น `pending` | อยู่นอกชุด replay ของแพตช์นี้ |
+| P07A | คำถามวิธีตั้ง System Default ได้ `low / auto_respond` จาก FAQ `KB-003` | คง routing และ FAQ เดิม |
+| P07B | GPT สรุปได้ว่าเลือก System Default แล้วแอปยังแสดงธีมสว่าง ผลสุดท้ายเป็น `low / auto_respond` จาก FAQ | `medium / route_to_specialist / Product Support` ร่างให้ทีมตรวจบั๊กและคงรายละเอียดการทำซ้ำใน summary |
+
+เทสต์ replay ผ่าน entry point ของ CLI `--audit` โดยใช้ proposal และชื่อเครื่องมือกับ arguments ที่คัดจาก baseline และให้ registry ทำงานกับ fixtures เดิม ตรวจว่า proposal และลำดับ tool calls ตรงกับที่บันทึกไว้ ชุดเดียวกันบน Policy `b66052b` ตก **3** และผ่าน **4** หลังแก้ผ่าน **7/7** ครอบคลุม P05A, P05B, P07A, P07B และสาม ticket ต้นฉบับ ไฟล์ replay ตัด customer IDs จาก tool arguments และไม่เก็บ tool payload ดิบ [เทสต์และวิธี replay](../tests/test_live_policy_replay.py) · [fixture](../tests/fixtures/live_policy_replay.json)
 
 ### Retrieval probes จากข้อความลูกค้าตรง ๆ
 
@@ -109,19 +128,21 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | P11A | ช่วยชี้หน้า settings ของการแจ้งเตือนหน่อยครับ | ไม่มี FAQ ตรงหัวข้อ | KB-003 จากคำว่า `settings` |
 | P11B | ช่วยชี้หน้า settings ของโหมดมืดหน่อยครับ | KB-003 | KB-003 |
 
-`hit@3` เท่ากับ **3/5** สำหรับเคสที่มี FAQ กำกับ P11A ยังได้ `KB-003` ผิดหัวข้อและไม่นับในตัวส่วน ใน CLI จำลอง ทั้ง `settings` และ `settings help` ถอด citation และคำแนะนำ Appearance ออกจากผลสุดท้าย เส้นทางแรกส่งต่อ ส่วนเส้นทางที่มี `KB-004` ใช้ FAQ ขอรายละเอียดทั่วไป Retrieval และ KB ใช้ชุดเดิม คำค้นจาก GPT จริงยังไม่มีผล
+`hit@3` เท่ากับ **3/5** จากข้อความลูกค้าตรง ๆ และ **4/5** จากคำค้นที่ GPT สร้างใน live baseline สำหรับเคสที่มี FAQ กำกับ P11A ยังได้ `KB-003` ผิดหัวข้อและไม่นับในตัวส่วน Live จบด้วยการส่งต่อและถอดคำแนะนำ Appearance ใน CLI จำลอง ทั้ง `settings` และ `settings help` ถอด citation และคำแนะนำ Appearance ออกจากผลสุดท้าย เส้นทางแรกส่งต่อ ส่วนเส้นทางที่มี `KB-004` ใช้ FAQ ขอรายละเอียดทั่วไป
 
 ## 4. BANKING77 pilot
 
 สร้างซ้ำได้ 16 แถวจาก `test` revision `57ec275d8078af65b7731c2a98be812d844a6d6b` ตรวจ SHA-256 ของ CSV และเทียบข้อความ ลำดับ และ Ticket JSON ที่จัดส่งแล้ว ต้นทางอนุญาตเผยแพร่ภายใต้ CC BY 4.0 เครดิตและรายละเอียดการคัดเลือกอยู่ใน [รายงานแหล่งข้อมูล](external-evaluation-pilot.md) · [ใบอนุญาตต้นทาง](https://github.com/PolyAI-LDN/task-specific-datasets/blob/57ec275d8078af65b7731c2a98be812d844a6d6b/LICENSE)
 
-| Source intent | พร้อมให้คะแนน | Pending | ถูก / ให้คะแนนแล้ว |
+| Source intent | พร้อมให้คะแนน | Pending | ถูก / ให้คะแนนแล้วใน live baseline |
 |---|---:|---|---|
-| `card_payment_fee_charged` | 4 | — | — / 0 |
-| `card_payment_not_recognised` | 4 | — | — / 0 |
-| `declined_card_payment` | 3 | `B77-TEST-1815` ระบุเพียงว่าจ่ายไม่ได้ | — / 0 |
-| `pending_card_payment` | 3 | `B77-TEST-1604` ถามวิธีทำรายการให้เสร็จโดยไม่บอกสถานะ | — / 0 |
-| **รวม** | **14** | **2** | **— / 0** |
+| `card_payment_fee_charged` | 4 | — | 0/4 |
+| `card_payment_not_recognised` | 4 | — | 3/4 |
+| `declined_card_payment` | 3 | `B77-TEST-1815` ระบุเพียงว่าจ่ายไม่ได้ | 2/3 |
+| `pending_card_payment` | 3 | `B77-TEST-1604` ถามวิธีทำรายการให้เสร็จโดยไม่บอกสถานะ | 1/3 |
+| **รวม** | **14** | **2** | **6/14** |
+
+ตัวประเมินให้คะแนนครบ 14/14 และไม่มี `missing` ใช้ `banking77-issue-types-v1` เดิม ผลผิดทั้งจากการขาดสถานะที่ต้นทางระบุ เช่น รายการค้าง และจากคำใกล้เคียงที่ rubric ไม่รับ เช่น `payment fee inquiry` สองแถว `pending` ยังอยู่นอกตัวส่วน
 
 ล็อก `banking77-issue-types-v1` ก่อนเห็นผล GPT โดยใช้ label ต้นทางกับรายการคำพ้องที่ระบุไว้ เทียบทั้งค่าหลัง normalize Unicode, ตัวพิมพ์ และตัวคั่น ตัวประเมินคืนจำนวนถูกและจำนวนที่ให้คะแนนแยกตาม intent พร้อม `expected` และ `actual` ของทุกเคสที่ผิด แสดงผลที่ขาดและ pending แยกกัน คำกว้างอย่าง `billing` อย่างเดียวไม่ตรงเกณฑ์ และชุดนี้ไม่มีเฉลย urgency, action หรือ routing [rubric และตัวประเมิน](../evaluation/banking77.py)
 
@@ -133,6 +154,7 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 python -m pip install -e '.[dev]'
 git rev-parse HEAD origin/main
 python -m pytest -q
+python -m pytest -q tests/test_live_policy_replay.py
 python -m triage_agent --help
 triage-agent --help
 python -m evaluation.banking77 verify
@@ -140,6 +162,8 @@ python -m evaluation.paired probe
 ```
 
 `verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน คำสั่ง PowerShell ด้านล่างโหลด Policy ของ `c28a22d` แล้ว replay เทสต์ล่าสุดเพื่อได้ผล **2 ตก / 61 ผ่าน** สำหรับแถวก่อนหน้าให้ใช้ชุดเทสต์บน SHA ในคอลัมน์หลังแก้และตั้ง `revision` เป็น SHA ในคอลัมน์ก่อนแก้ ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
+
+สำหรับเทสต์ที่ใช้ proposal จาก authenticated baseline เปลี่ยน `revision` เป็น `b66052be7478071148bee0ea793abf6052525e2e` และใช้ `pytest.main(["-q", "tests/test_live_policy_replay.py"])` ในบรรทัดสุดท้าย จะได้ **3 ตก / 4 ผ่าน** โดยไม่เรียก API ซ้ำ
 
 ```powershell
 @'

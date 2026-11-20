@@ -84,8 +84,12 @@ _SCOPED_FOLLOWUP = (
     r"\bsame\s+error\s+for\s+(?:(?:my|our|the)\s+)?" + _MULTI_USER,
 )
 _AFFECTED_GROUP = _MULTI_USER + _GROUP_REPORT_WORDS + r"\baffected\s*$"
-_DARK_DEFECT = re.compile(r"still\s+(?:shows?\s+)?light|not\s+working|doesn't\s+work|bug|ไม่ทำงาน", re.IGNORECASE)
-_APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light theme|appearance)\b|(?:โหมดมืด|ธีมมืด)"
+_DARK_DEFECT = re.compile(
+    r"(?:still\s+(?:(?:shows?|stays?|remains?)\s+)?|(?:stays?|remains?|stuck)\s+)(?:(?:in|on)\s+)?light\b"
+    r"|not\s+working|doesn't\s+work|bug|ไม่ทำงาน|ยัง(?:คง)?\s*(?:แสดง|ใช้|เป็น)?\s*(?:ธีม|โหมด)สว่าง",
+    re.IGNORECASE,
+)
+_APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light mode|light theme|appearance)\b|(?:โหมด|ธีม)(?:มืด|สว่าง)"
 _CLAUSE_BREAK = re.compile(r"[.!?;\n,]|\b(?:but|however|yet)\b|แต่", re.IGNORECASE)
 _OUTAGE_CLAUSE_BREAK = re.compile(
     rf"(,\s*but\b(?=\s+only\s+if\b)|{_CLAUSE_BREAK.pattern}|[–—]|(?<=\s)-(?=\s))", re.IGNORECASE,
@@ -193,9 +197,9 @@ _IMPACT_REPORT_NEGATION = re.compile(
 )
 
 
-def _affirmed_pattern(
+def _affirmed_match(
     message: str, pattern: str, *, negation: re.Pattern[str] = _NEGATION
-) -> bool:
+) -> re.Match[str] | None:
     """Match a clear signal unless directly negated in the same clause.
 
     This is intentionally modest: ambiguous wording should be handled by the
@@ -205,13 +209,41 @@ def _affirmed_pattern(
         prefix = message[max(0, found.start() - 65): found.start()]
         prefix = _CLAUSE_BREAK.split(prefix)[-1]
         if not negation.search(prefix):
-            return True
-    return False
+            return found
+    return None
 
 
+def _affirmed_pattern(
+    message: str, pattern: str, *, negation: re.Pattern[str] = _NEGATION
+) -> bool:
+    return _affirmed_match(message, pattern, negation=negation) is not None
+
+
+_FAILED_UPGRADE = (
+    r"\b(?:failed\s+to\s+upgrade|upgrade\s+(?:failed|was\s+unsuccessful|"
+    r"did(?:n['’]t|\s+not)\s+(?:go\s+through|succeed)))\b"
+    r"|อัปเกรด(?:แล้ว)?\s*(?:ไม่สำเร็จ|ไม่ได้|ไม่ผ่าน)"
+)
 _PAYMENT_FAILURE_PATTERNS = (
-    r"\b(?:payment\s+failed|failed\s+payment|upgrade\s+failed|failed\s+to\s+(?:pay|upgrade)|card\s+(?:was\s+)?declined)\b",
-    r"(?:ชำระเงิน|จ่ายเงิน|อัปเกรด)(?:ไม่สำเร็จ|ไม่ได้)",
+    _FAILED_UPGRADE,
+    r"\b(?:payment\s+failed|failed\s+payment|failed\s+to\s+pay|card\s+(?:was\s+)?declined)\b",
+    r"(?:ชำระเงิน|จ่ายเงิน)(?:ไม่สำเร็จ|ไม่ได้)",
+)
+_NUMBER_WORDS = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "สอง": 2, "สาม": 3, "สี่": 4, "ห้า": 5, "หก": 6, "เจ็ด": 7, "แปด": 8, "เก้า": 9, "สิบ": 10,
+}
+_REPEATED_COUNT = r"(?:[2-9]|[1-9][0-9]{1,3}|" + "|".join(_NUMBER_WORDS) + ")"
+_PAYMENT_ATTEMPTS = (
+    r"\b(?:(?:tried|attempted)\s+to\s+pay|retried\s+(?:the\s+)?payment|"
+    r"(?:clicked|pressed|tapped|hit)\s+(?:the\s+)?pay(?:ment)?(?:\s+button)?)\s+"
+    rf"({_REPEATED_COUNT})\s+times\b|(?:กด|ลอง|พยายาม)\s*(?:จ่าย|ชำระ(?:เงิน)?)(?:ไป)?\s*"
+    rf"({_REPEATED_COUNT})\s*(?:ครั้ง|รอบ)"
+)
+_STATEMENT_CHARGES = (
+    r"\bstatement\s+(?:shows?|lists?|has)\s+"
+    rf"({_REPEATED_COUNT})\s+(?:(?:pending|separate)\s+)?charges\b"
+    rf"|ใบแจ้งยอด\s*(?:ขึ้น|แสดง|มี)\s*รายการเรียกเก็บ(?:เงิน)?\s*({_REPEATED_COUNT})\s*รายการ"
 )
 
 
@@ -239,6 +271,16 @@ def _payment_failure(ticket: Ticket) -> bool:
     """An initial unsuccessful upgrade deserves specialist review, not a FAQ closure."""
     return any(_affirmed_pattern(message.text.lower(), pattern)
                for message in ticket.messages for pattern in _PAYMENT_FAILURE_PATTERNS)
+
+
+def _reported_payment_count(ticket: Ticket, pattern: str) -> int | None:
+    for message in reversed(ticket.messages):
+        for clause in reversed(_CLAUSE_BREAK.split(message.text)):
+            match = _affirmed_match(clause, pattern)
+            if match and not _HYPOTHETICAL.search(clause):
+                count = (match[1] or match[2]).casefold()
+                return int(count) if count.isdecimal() else _NUMBER_WORDS[count]
+    return None
 
 
 def _floor_urgency(value: str, minimum: str) -> str:
@@ -345,7 +387,7 @@ def risk_signals(ticket: Ticket) -> tuple[_OutageEvidence | None, bool, bool]:
     billing = any(_affirmed_pattern(m, p) for m in messages for p in _BILLING_PATTERNS) or reports_refund_dispute(ticket)
     outage = _multi_user_outage(messages)
     third_party = re.compile(r"\b(?:my coworker|my colleague|my friend|someone else|another customer)\b")
-    dark_bug = any("dark mode" in m and _DARK_DEFECT.search(m)
+    dark_bug = any(re.search(_APPEARANCE_TOPIC, m) and _DARK_DEFECT.search(m)
                    and not third_party.search(m) for m in messages)
     return outage, billing, dark_bug
 
@@ -399,6 +441,9 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
     data["kb_article_ids"] = grounded
 
     outage, billing, dark_bug = risk_signals(ticket)
+    statement_charges = _reported_payment_count(ticket, _STATEMENT_CHARGES)
+    billing = billing or statement_charges is not None
+    failed_upgrade = any(_affirmed_pattern(message.text, _FAILED_UPGRADE) for message in ticket.messages)
     if outage:
         if data["urgency"] != "critical":
             changes.append("multi_user_outage_min_critical")
@@ -430,6 +475,11 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
         )
         data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
             "Bank charges and refunds not verified"]))
+        if failed_upgrade and statement_charges is not None:
+            data["summary"] = (
+                f"Customer reports a failed upgrade and says their statement shows {statement_charges} charges. "
+                "Whether those charges settled is unverified."
+            )
     elif dark_bug:
         old = data["urgency"]
         data["urgency"] = _floor_urgency(old, "medium")
@@ -466,6 +516,22 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
             "Thank you for reporting this issue. A support specialist will review the "
             "failure; its cause and resolution have not been confirmed."
         )
+
+        attempts = _reported_payment_count(ticket, _PAYMENT_ATTEMPTS) if category == "payment" and failed_upgrade else None
+        if attempts is not None:
+            data["summary"] = (
+                f"Customer reports the upgrade failed and they attempted to pay {attempts} times. "
+                "Whether the attempts resulted in charges is unverified."
+            )
+            data["draft_response"] = (
+                "Thank you for reporting the failed upgrade and repeated attempts to pay. "
+                "We have not verified whether any of those attempts resulted in a charge. "
+                "Our support team will review the payment and upgrade status."
+            )
+            data["reasons"] = ["Customer reports an upgrade failure and repeated payment attempts"]
+            data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
+                "Whether the payment attempts resulted in charges is unverified"]))
+            changes.append("payment_attempts_distinguished_from_charges")
 
     # CRITICAL is always a human escalation, including when the model proposes
     # route_to_specialist rather than auto_respond.

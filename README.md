@@ -29,7 +29,7 @@ Every ticket goes through the OpenAI Responses API with function calling and str
 
 The four read-only mock tools provide account history, FAQ search, billing status and system status. The agent reads English and Thai ticket threads. The output is a recommendation and draft for support staff. Mock records cannot verify a real charge, refund or incident.
 
-**Authenticated OpenAI: NOT VERIFIED.** The test suite exercises the real CLI, adapter, tools and policy with simulated OpenAI responses. [QA report](docs/qa-review.md)
+**Authenticated OpenAI verified on `b66052b`.** The CLI evaluated 46 tickets with `gpt-4.1-mini-2025-04-14`. Later policy changes have offline replay evidence. An authenticated run of those changes is pending. [Evaluation results](docs/evaluation-results.md)
 
 ## 3. Quick Start
 
