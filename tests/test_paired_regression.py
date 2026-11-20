@@ -380,3 +380,144 @@ def test_public_status_does_not_confirm_or_disprove_tenant_outage(
     status = result["tool_trace"][-1]["result"]["status"]
     assert status["public_status"] == pair["public_status"][side]
     assert status["incident_confirmed"] is None
+
+
+@pytest.mark.parametrize(
+    "messages,expected",
+    [
+        pytest.param(
+            ["My login page returns HTTP 500. I have not heard from the rest of the team yet."],
+            ("medium", "route_to_specialist", "Technical Support"), id="only-one-reporter",
+        ),
+        pytest.param(
+            ["I get HTTP 500.", "The two team leads reported that nobody in either group can open the login page."],
+            ("critical", "escalate_to_human", "Infrastructure / On-call"), id="two-groups-confirm",
+        ),
+        pytest.param(
+            ["ทุกคนในทีมเชียงใหม่เข้าใช้งานไม่ได้ ขึ้น HTTP 500", "หน้า status ขึ้นปกติค่ะ"],
+            ("critical", "escalate_to_human", "Infrastructure / On-call"), id="local-impact-green-status",
+        ),
+    ],
+)
+def test_audit_access_routing_uses_reported_scope(messages, expected, run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    final = run_audit(
+        ticket, urgency="high", action="escalate_to_human", assigned_team="Proposed Incident Team",
+        query="HTTP 500 access", kb_article_ids=["KB-002"],
+        optional_calls=[("check_system_status", {"region": "Asia"})],
+    )["result"]
+
+    assert (final["urgency"], final["action"], final["assigned_team"]) == expected
+    if expected[0] == "critical":
+        assert "regional scope" in final["draft_response"].lower()
+        assert "asia is down" not in final["draft_response"].lower()
+
+
+def test_audit_denied_error_does_not_override_documentation_request(run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [
+        Message(when="1", text="Nobody on our team is seeing HTTP 500 and we can all sign in."),
+        Message(when="2", text="Where can I get the general documentation?"),
+    ]
+    final = run_audit(ticket, query="general documentation onboarding checklist", kb_article_ids=["KB-004"])["result"]
+
+    assert (final["urgency"], final["action"], final["kb_article_ids"]) == ("low", "auto_respond", ["KB-004"])
+    assert "relevant help documentation" in final["draft_response"].lower()
+
+
+@pytest.mark.parametrize(
+    "messages,required,forbidden",
+    [
+        pytest.param(
+            ["เมื่อเช้าทั้งสาขาเข้าไม่ได้ ขึ้น HTTP 500", "ตอนนี้ทุกคนในสาขาเข้าได้ตามปกติแล้วค่ะ"],
+            ["can access the system again"], ["cannot access"], id="branch-recovers",
+        ),
+        pytest.param(
+            ["All users in Hanoi and all users in Cebu are blocked by HTTP 500.",
+             "Hanoi is back online for everyone. Cebu is still blocked for everyone and still sees HTTP 500."],
+            ["users in Hanoi can access the system again", "latest report for Cebu"],
+            ["users in Cebu can access the system again"], id="separate-regional-states",
+        ),
+        pytest.param(
+            ["All users in Asia can sign in and all users in Europe see HTTP 500."],
+            ["users in Europe cannot access"], ["Asia cannot access"], id="separate-subjects-with-distinct-predicates",
+        ),
+    ],
+)
+def test_audit_access_draft_preserves_the_latest_scope(messages, required, forbidden, run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    final = run_audit(ticket, query="HTTP 500 access", kb_article_ids=["KB-002"])["result"]
+
+    draft = final["draft_response"].lower()
+    for phrase in required:
+        assert phrase.lower() in draft
+    for phrase in forbidden:
+        assert phrase.lower() not in draft
+
+
+@pytest.mark.parametrize("statement", ["", "เปิด statement แล้วค่ะ มีรายการของร้านคุณสองบรรทัด"], ids=["retry", "reported-entries"])
+def test_audit_billing_distinguishes_retry_from_statement_entries(statement, run_audit):
+    ticket = ticket_for(PAIRS["P05"], "A")
+    messages = ["อัปเกรดไม่ผ่านค่ะ จึงแตะยืนยันจ่ายไปรอบที่สอง"]
+    if statement:
+        messages.append(statement)
+    ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    final = run_audit(
+        ticket, query="upgrade failure payment", kb_article_ids=["KB-001"],
+        optional_calls=[("check_billing_status", {"customer_id": ticket.customer.customer_id})],
+    )["result"]
+
+    if statement:
+        assert (final["urgency"], final["action"], final["assigned_team"]) == (
+            "high", "escalate_to_human", "Billing Support",
+        )
+        assert "pending verification" in final["draft_response"].lower()
+    else:
+        assert "attempted to pay 2 times" in final["summary"].lower()
+        assert "not verified whether any of those attempts resulted in a charge" in final["draft_response"].lower()
+
+
+@pytest.mark.parametrize(
+    "updates,withdrawn",
+    [(["Please close my appeal."], True), (["Please close my appeal.", "I dispute the decision again."], False)],
+    ids=["withdrawn", "renewed"],
+)
+def test_audit_refund_handoff_uses_latest_appeal_position(updates, withdrawn, run_audit):
+    ticket = ticket_for(PAIRS["P06"], "A")
+    messages = ["Finance rejected my refund request. I'd like to challenge that.", *updates]
+    ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    final = run_audit(
+        ticket, query="refund rejection appeal", kb_article_ids=["KB-001"],
+        draft_response="We have closed the appeal and issued the refund.",
+    )["result"]
+
+    if withdrawn:
+        assert "withdraw" in final["summary"].lower()
+        assert "want to withdraw" in final["draft_response"].lower()
+        assert "cannot confirm" in final["draft_response"].lower()
+    else:
+        assert (final["urgency"], final["action"], final["assigned_team"]) == (
+            "high", "escalate_to_human", "Billing Support",
+        )
+
+
+@pytest.mark.parametrize("relapsed", [False, True], ids=["recovered", "relapsed"])
+def test_audit_appearance_handoff_uses_latest_theme_status(relapsed, run_audit):
+    ticket = ticket_for(PAIRS["P07"], "B")
+    messages = ["เลือก System Default แล้วแอปยังเป็นธีมสว่างค่ะ",
+                "หลังรีสตาร์ตแอป ตอนนี้ธีมมืดทำงานปกติแล้วค่ะ"]
+    if relapsed:
+        messages.append("ตอนนี้แอปกลับมาแสดงธีมสว่างอีกครั้ง ใช้โหมดมืดไม่ได้")
+    ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    final = run_audit(ticket, query="appearance dark mode", kb_article_ids=["KB-003"])["result"]
+
+    if relapsed:
+        assert final["urgency"] == "medium"
+        assert (final["action"], final["assigned_team"]) == ("route_to_specialist", "Product Support")
+        assert "working again" not in final["draft_response"].lower()
+    else:
+        assert final["urgency"] == "low"
+        assert "working again" in final["summary"].lower()
+        assert "working again" in final["draft_response"].lower()

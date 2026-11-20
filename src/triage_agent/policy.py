@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from .models import AgentProposal, Ticket, TriageResult
 from .tools import ToolRegistry
@@ -43,20 +43,27 @@ _REFUND_DENIED = (
     r"\b(?:denied|refused|rejected)\s+(?:(?:a|the|my|this)\s+)?refund\b"
     r"|\brefund\s+(?:was\s+)?(?:denied|refused|rejected)\b"
 )
-_DISPUTES_DECISION = r"\b(?:dispute|appeal)\s+(?:(?:that|the|this)\s+)?(?:decision|denial|rejection)\b"
+_DISPUTES_DECISION = (
+    r"\b(?:dispute|appeal|challenge)\s+(?:(?:that|the|this)\s+)?(?:decision|denial|rejection)\b"
+    r"|\bchallenge\s+(?:that|this)\s*$"
+)
+_WITHDRAW_APPEAL = (
+    r"\b(?:withdraw|drop|close|cancel)\s+(?:(?:the|my|this)\s+)?(?:refund\s+)?(?:appeal|dispute)\b"
+)
 _HTTP_500 = r"\b(?:http\s*500|error\s*500|server\s*error\s*500)\b"
+_ACCESS_VERB = r"(?:log\s*in|sign\s*in|access|(?:open|load|reach)\s+(?:(?:the|our)\s+)?(?:log[- ]?in|sign[- ]?in)\s+page)"
 _OUTAGE_PATTERNS = (
     _HTTP_500,
     r"\b(?:production|system|service|platform|site|app)\s+(?:is\s+)?(?:completely\s+|totally\s+)?(?:down|unavailable|inaccessible|offline)\b",
-    r"\b(?:can\s*not|cannot|can't|unable\s+to)\s+(?:log\s*in|access|sign\s*in)\b",
+    rf"\b(?:can\s*not|can['’]t|could\s*not|couldn['’]t|unable\s+to)\s+{_ACCESS_VERB}\b",
     r"(?:ระบบ|แอป|เว็บไซต์)(?:ล่ม|ใช้งานไม่ได้|เข้าไม่ได้)",
     r"(?:เข้า(?:ระบบ|ใช้งาน)?ไม่ได้|ใช้งานไม่ได้|ไม่สามารถ(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้)",
 )
 _MULTI_USER = (
     r"(?:\b(?:coworkers|colleagues|multiple\s+(?:users|employees|people)|everyone|"
-    r"entire\s+(?:company|organization|team)|whole\s+(?:company|organization)|"
+    r"(?:entire|whole)\s+(?:company|organization|team|branch|office)|"
     r"all\s+(?:our\s+)?(?:users|employees|staff|teams)(?:\s+and\s+(?:users|employees|staff|contractors))?|company-wide)\b"
-    r"|เพื่อนร่วมงาน|หลายคน|ทั้งองค์กร|ทั้งบริษัท|ทุกคน|ทั้งทีม)"
+    r"|เพื่อนร่วมงาน|หลายคน|ทั้งองค์กร|ทั้งบริษัท|ทุกคน|ทั้งทีม|ทั้งสาขา|ทั้งสำนักงาน)"
 )
 _OUTAGE_SYMPTOM = "(?:" + "|".join(_OUTAGE_PATTERNS) + ")"
 _LOCATION_WORD = r"(?!(?:no|none|not|never|without|can|cannot|is|are|was|were|has|have|and|or)\b)\w+"
@@ -64,17 +71,24 @@ _LOCATION = rf"(?:{_LOCATION_WORD}[ -]){{0,3}}?{_LOCATION_WORD}"
 _SCOPE_LOCATION = rf"(?:\s+(?:in|at|across)\s+{_LOCATION})?"
 _GROUP_REPORT_WORDS = (
     _SCOPE_LOCATION + r"\s*(?:(?:also|still|now|are|is|keep|keeps|get|gets|getting|got|see|sees|seeing|"
-    r"reported|report|reports|has|have|having|the|same|hit|affected|by|with|"
+    r"reported|report|reports|has|have|having|the|same|hit|affected|blocked|by|with|"
     r"experienc(?:e|es|ing))\s+){0,6}(?:\s|ก็|ยัง|คง|ต่าง){0,12}"
 )
+_THAI_GROUP_LOCATION = (
+    r"(?:ใน(?:ทีม|สาขา|สำนักงาน|ออฟฟิศ|ภูมิภาค)"
+    r"(?:(?!แต่|และ|หรือ|ยังไม่ได้|เข้า|ใช้งาน|กลับมา)[ก-๙a-z -]){0,30}?)?"
+)
+_LOCATED_GROUP = rf"{_MULTI_USER}\s+(?:in|at|across)\s+{_LOCATION}"
 # Bind the affected group to the symptom. A group mentioned as unaffected in a
 # neighboring clause or message does not establish broader impact.
 _SCOPED_OUTAGE_PATTERNS = (
+    rf"{_LOCATED_GROUP}(?:\s+and\s+{_LOCATED_GROUP})+" + _GROUP_REPORT_WORDS + _OUTAGE_SYMPTOM,
     _MULTI_USER + _GROUP_REPORT_WORDS + _OUTAGE_SYMPTOM,
+    _MULTI_USER + _THAI_GROUP_LOCATION + r"\s*(?:ก็|ยัง|คง|ต่าง)?\s*" + _OUTAGE_SYMPTOM,
     _OUTAGE_SYMPTOM + r"\s+(?:for|affecting|across|reported by)\s+(?:(?:my|our|the)\s+)?" + _MULTI_USER,
     _OUTAGE_SYMPTOM + r"\s+company-wide\b",
     r"\b(?:no one|nobody|none\s+of\s+(?:(?:our|my|the)\s+)?" + _MULTI_USER + r")"
-    + _SCOPE_LOCATION + r"\s+(?:can|is able to)\s+(?:log\s*in|sign\s*in|access)\b",
+    + _SCOPE_LOCATION + rf"\s+(?:can|is able to)\s+{_ACCESS_VERB}\b",
 )
 _IMPACT_REPORT = (
     _OUTAGE_SYMPTOM + r"\s+(?:affects|is\s+affecting)\s+(?:(?:my|our|the)\s+)?" + _MULTI_USER
@@ -88,10 +102,21 @@ _DARK_DEFECT = re.compile(
     r"(?:(?:still|continues?\s+to)\s+(?:(?:show|render|display|use|stay|remain)s?\s+)?"
     r"|keeps?\s+(?:showing|rendering|displaying|using)\s+|(?:stays?|remains?|stuck)\s+)"
     r"(?:(?:in|on)\s+)?(?:the\s+)?light\b"
-    r"|not\s+working|doesn't\s+work|bug|ไม่ทำงาน|ยัง(?:คง)?\s*(?:แสดง|ใช้|เป็น)?\s*(?:ธีม|โหมด)สว่าง",
+    r"|not\s+working|doesn't\s+work|bug|ไม่ทำงาน|(?:ยัง(?:คง)?|กลับมา)\s*(?:แสดง|ใช้|เป็น)?\s*(?:ธีม|โหมด)สว่าง",
     re.IGNORECASE,
 )
 _APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light mode|light theme|appearance)\b|(?:โหมด|ธีม)(?:มืด|สว่าง)"
+_DARK_RECOVERY = (
+    r"\b(?:dark (?:mode|theme)|appearance)\s+(?:(?:is|now)\s+)?"
+    r"(?:works?|working)\s+(?:again|now|normally|correctly|fine|as\s+expected)\b"
+    r"|(?:โหมด|ธีม)มืด(?:กลับมา)?\s*(?:ใช้ได้|ใช้งานได้|ทำงาน(?:ตาม)?ปกติ|ปกติ)แล้ว"
+)
+_AFTER_RESTART = re.compile(
+    r"\bafter\s+(?:(?:i|we|a|the)\s+)?(?:restart(?:ed|ing)?|reboot(?:ed|ing)?)\b"
+    r"|หลัง(?:จาก)?\s*(?:รีสตาร์ต|รีสตาร์ท|เปิดแอปใหม่)",
+    re.IGNORECASE,
+)
+_THIRD_PARTY_APPEARANCE = re.compile(r"\b(?:my coworker|my colleague|my friend|someone else|another customer)\b", re.IGNORECASE)
 _CLAUSE_BREAK = re.compile(r"[.!?;\n,]|\b(?:but|however|yet)\b|แต่", re.IGNORECASE)
 _OUTAGE_CLAUSE_BREAK = re.compile(
     rf"(,\s*but\b(?=\s+only\s+if\b)|{_CLAUSE_BREAK.pattern}|[–—]|(?<=\s)-(?=\s))", re.IGNORECASE,
@@ -123,9 +148,10 @@ _COORDINATED_FOLLOWUP = re.compile(
 _OUTAGE_SCOPE_SUBJECT = rf"(?:{_MULTI_USER}|\b(?:users|employees|staff|system|service|app|site)\b)"
 _EXPLICIT_SCOPE = re.compile(
     _OUTAGE_SCOPE_SUBJECT
-    + rf"\s+(?:in|at|across)\s+({_LOCATION})(?=\s+(?:also|still|now|can|can\s*not|can't|are|is|has|"
+    + rf"\s+(?:in|at|across)\s+({_LOCATION})(?=\s+(?:also|still|now|can|could|can\s*not|can't|are|is|were|was|has|"
     r"have|cannot|unable|get|gets|getting|got|see|sees|seeing|report|reported|reports|"
-    r"keep|keeps|experience|experiences|experiencing|back|restored)\b)",
+    r"keep|keeps|experience|experiences|experiencing|back|restored)\b"
+    rf"|\s+and\s+(?={_OUTAGE_SCOPE_SUBJECT}))",
     re.IGNORECASE,
 )
 _SCOPE_PREFIX = (
@@ -152,18 +178,21 @@ _REGION_NAMES = {
     "apac": "Asia-Pacific", "asia-pacific": "Asia-Pacific", "asia pacific": "Asia-Pacific",
     "eu": "EU", "เอเชีย": "Asia", "ยุโรป": "Europe",
 }
+_RESTORED_ACCESS_VERB = r"(?:log\s*in|sign\s*in|access(?:\s+\w+){0,5})"
 _ACCESS_RESTORED = (
-    r"\s+(?:can|(?:are|is)\s+able\s+to)\s+"
-    r"(?:log\s*in|sign\s*in|access(?:\s+\w+){0,5})\s+(?:again|now)\b"
+    r"\s+(?:can|could|(?:are|is|were|was)\s+able\s+to)\s+"
+    rf"(?:now\s+{_RESTORED_ACCESS_VERB}|{_RESTORED_ACCESS_VERB}\s+(?:again|now))\b"
 )
+_SITE_RESTORED = r"\s+(?:(?:is|has\s+been)\s+)?(?:back\s+up|back\s+online|restored)\b"
 _RECOVERY_PATTERNS = (
     r"\b(?:everyone|all\s+(?:our\s+)?(?:users|employees|staff)|the\s+whole\s+team)\b"
     + _SCOPE_LOCATION + _ACCESS_RESTORED,
     r"\b(?:users|employees|staff)\s+(?:in|at|across)\s+" + _LOCATION + _ACCESS_RESTORED,
-    r"(?:\b(?:system|service|app|site)\b" + _SCOPE_LOCATION + r"|" + _REGION_NAME + r")"
-    r"\s+(?:(?:is|has\s+been)\s+)?(?:back\s+up|back\s+online|restored)\b",
-    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)(?:\s*ใน(?:เอเชีย|ยุโรป))?\s*"
-    r"(?:กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?|(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้แล้ว)",
+    r"(?:\b(?:system|service|app|site)\b" + _SCOPE_LOCATION + r"|" + _REGION_NAME + r")" + _SITE_RESTORED,
+    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ทั้งสาขา|ทั้งสำนักงาน|ระบบ|แอป)"
+    + rf"(?:\s*ใน(?:เอเชีย|ยุโรป)|{_THAI_GROUP_LOCATION})\s*"
+    r"(?:กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?"
+    r"|(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:ตามเดิม|ตามปกติ)?แล้ว)",
 )
 _PASSWORD_REFERENCE = re.compile(r"\bpasswords?\b|รหัสผ่าน", re.IGNORECASE)
 _PASSWORD_OBJECT = r"(?:(?:your|the|current|existing|account|login)\s+){0,4}passwords?\b"
@@ -239,34 +268,62 @@ _REPEATED_COUNT = r"(?:[2-9]|[1-9][0-9]{1,3}|" + "|".join(_NUMBER_WORDS) + ")"
 _PAYMENT_ATTEMPTS = (
     r"\b(?:(?:tried|attempted)\s+to\s+pay|retried\s+(?:the\s+)?payment|"
     r"(?:clicked|pressed|tapped|hit)\s+(?:the\s+)?pay(?:ment)?(?:\s+button)?)\s+"
-    rf"({_REPEATED_COUNT})\s+times\b|(?:กด|ลอง|พยายาม)\s*(?:จ่าย|ชำระ(?:เงิน)?)(?:ไป)?\s*"
-    rf"({_REPEATED_COUNT})\s*(?:ครั้ง|รอบ)"
+    rf"({_REPEATED_COUNT})\s+times\b|(?:กด|แตะ|ลอง|พยายาม)\s*(?:ยืนยัน)?\s*(?:จ่าย|ชำระ(?:เงิน)?)(?:ไป)?\s*"
+    rf"(?:(?:ครั้ง|รอบ)ที่\s*({_REPEATED_COUNT})|({_REPEATED_COUNT})\s*(?:ครั้ง|รอบ))"
 )
 _STATEMENT_CHARGES = (
     r"\bstatement\s+(?:shows?|lists?|has)\s+"
     rf"({_REPEATED_COUNT})\s+(?:(?:pending|separate)\s+)?charges\b"
     rf"|ใบแจ้งยอด\s*(?:ขึ้น|แสดง|มี)\s*รายการเรียกเก็บ(?:เงิน)?\s*({_REPEATED_COUNT})\s*รายการ"
 )
+_STATEMENT_ENTRIES = (
+    rf"(?:\bstatement\b|ใบแจ้งยอด)\s*(?:แล้ว(?:ครับ|ค่ะ)?)?\s*(?:ขึ้น|แสดง|มี)\s*รายการ"
+    rf"(?:ของ[ก-๙a-z ]{{1,24}}?)?\s*{_REPEATED_COUNT}\s*(?:บรรทัด|รายการ)"
+)
 
 
-def _access_problem(ticket: Ticket) -> bool:
-    """Affirmed service-access symptoms, even when only one user is affected."""
+_REFUND_POSITION_NEGATION = re.compile(
+    rf"{_NEGATION.pattern}|\b(?:don|didn|doesn)['’]t\b[\w\s'’-]{{0,24}}$", re.IGNORECASE,
+)
+_ERROR_DENIAL = re.compile(
+    rf"{_NEGATION.pattern}|\b(?:no one|nobody|none)\b"
+    r"(?:(?!\b(?:and|but|while)\b)[\w\s'-]){0,50}"
+    r"\b(?:seeing|sees?|getting|gets?|experiencing|experiences?|receiving|receives?|"
+    r"encounter(?:ed|s)?|report(?:ed|s)?|has|have|had)\s+(?:(?:an?|any)\s+)?$",
+    re.IGNORECASE,
+)
+
+
+def _access_symptom(clause: str) -> bool:
     return any(
-        _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
-        for clause, _ in _outage_clauses([message.text for message in ticket.messages])
+        _affirmed_pattern(clause, pattern, negation=_ERROR_DENIAL if pattern == _HTTP_500 else _NEGATION)
+        for pattern in _OUTAGE_PATTERNS
     )
+
+
+def _access_problem(messages: list[str]) -> bool:
+    """Affirmed service-access symptoms, even when only one user is affected."""
+    return any(_access_symptom(clause) for clause, _ in _reported_clauses(messages))
 
 
 def reports_dark_mode_scheduling(ticket: Ticket) -> bool:
     return any("schedule dark mode" in message.text.lower() for message in ticket.messages)
 
 
-def reports_refund_dispute(ticket: Ticket) -> bool:
-    messages = [message.text for message in ticket.messages]
-    return any(_affirmed_pattern(message, _REFUND_DISPUTE) for message in messages) or (
-        any(_affirmed_pattern(message, _REFUND_DENIED) for message in messages)
-        and any(_affirmed_pattern(message, _DISPUTES_DECISION) for message in messages)
-    )
+def _refund_dispute_status(messages: list[str]) -> tuple[Literal["active", "withdrawn"] | None, bool]:
+    status = None
+    declined = False
+    for clause, delimiter in _reported_clauses(messages):
+        if delimiter == "?":
+            continue
+        declined = declined or _affirmed_pattern(clause, _REFUND_DENIED)
+        if (declined or status) and _affirmed_pattern(clause, _WITHDRAW_APPEAL, negation=_REFUND_POSITION_NEGATION):
+            status = "withdrawn"
+        elif _affirmed_pattern(clause, _REFUND_DISPUTE, negation=_REFUND_POSITION_NEGATION) or (
+            declined and _affirmed_pattern(clause, _DISPUTES_DECISION, negation=_REFUND_POSITION_NEGATION)
+        ):
+            status = "active"
+    return status, declined
 
 
 def _payment_failure(ticket: Ticket) -> bool:
@@ -280,7 +337,7 @@ def _reported_payment_count(ticket: Ticket, pattern: str) -> int | None:
         for clause in reversed(_CLAUSE_BREAK.split(message.text)):
             match = _affirmed_match(clause, pattern)
             if match and not _HYPOTHETICAL.search(clause):
-                count = (match[1] or match[2]).casefold()
+                count = next(value for value in match.groups() if value is not None).casefold()
                 return int(count) if count.isdecimal() else _NUMBER_WORDS[count]
     return None
 
@@ -289,7 +346,7 @@ def _floor_urgency(value: str, minimum: str) -> str:
     return value if RANK[value] >= RANK[minimum] else minimum
 
 
-def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
+def _reported_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
     """Yield reports while keeping a conditional consequence with its premise."""
     for message in messages:
         parts = _OUTAGE_CLAUSE_BREAK.split(message)
@@ -348,50 +405,78 @@ class _OutageEvidence(NamedTuple):
     recovered: set[str | None]
 
 
+def _first_report(clause: str, patterns: tuple[str, ...]) -> re.Match[str] | None:
+    return next((match for pattern in patterns if (match := _affirmed_match(clause, pattern))), None)
+
+
+def _report_regions(clause: str, matched_report: str) -> set[str]:
+    names = (
+        _EXPLICIT_SCOPE.findall(matched_report)
+        or _LEADING_SCOPE.findall(clause)
+        or _SCOPE_HEADING.findall(clause)
+        or _EXPLICIT_SCOPE.findall(clause)
+        or re.findall(_REGION_NAME, clause, re.IGNORECASE)
+    )
+    return {_REGION_NAMES.get(name.casefold(), name.title()) for name in names}
+
+
 def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
     unresolved: set[str | None] = set()
     recovered: set[str | None] = set()
     symptom_reported = False
-    for clause, delimiter in _outage_clauses(messages):
-        names = (
-            _EXPLICIT_SCOPE.findall(clause)
-            or _LEADING_SCOPE.findall(clause)
-            or _SCOPE_HEADING.findall(clause)
-            or re.findall(_REGION_NAME, clause, re.IGNORECASE)
+    for clause, delimiter in _reported_clauses(messages):
+        # Accept a bare place name as a subject only after a location was already reported.
+        location = next((
+            name for name in sorted((unresolved | recovered) - {None})
+            if re.match(rf"^\s*{re.escape(name)}\s+", clause, re.IGNORECASE)
+        ), None)
+        recovery = _first_report(clause, _RECOVERY_PATTERNS)
+        named_recovery = location and _affirmed_pattern(
+            clause, re.escape(location) + rf"(?:{_SITE_RESTORED}|\s+(?:users|staff|employees)\b{_ACCESS_RESTORED})",
         )
-        regions = {_REGION_NAMES.get(name.casefold(), name.title()) for name in names}
-        region = next(iter(regions)) if len(regions) == 1 else None
-        if delimiter != "?" and any(_affirmed_pattern(clause, pattern) for pattern in _RECOVERY_PATTERNS):
-            if (unresolved or recovered) and len(regions) <= 1 and (region is not None or None in unresolved):
+        if delimiter != "?" and (recovery or named_recovery):
+            regions = {location} if named_recovery else _report_regions(clause, recovery[0])
+            if (unresolved or recovered) and len(regions) <= 1 and (regions or None in unresolved):
+                region = next(iter(regions), None)
                 recovered.add(region)
                 if region in unresolved:
                     unresolved.remove(region)
                     symptom_reported = False
             continue
-        symptom_in_clause = _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
+
+        symptom_in_clause = _access_symptom(clause)
         symptom_reported = symptom_reported or symptom_in_clause
-        if (
-            any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_OUTAGE_PATTERNS)
-            or (delimiter != "?" and _affirmed_pattern(clause, _IMPACT_REPORT, negation=_IMPACT_REPORT_NEGATION))
-            or (symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP))
-            or (symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP))
+        scopes = _first_report(clause, _SCOPED_OUTAGE_PATTERNS)
+        if not scopes and delimiter != "?":
+            scopes = _affirmed_match(clause, _IMPACT_REPORT, negation=_IMPACT_REPORT_NEGATION)
+        if not scopes and symptom_reported:
+            scopes = _first_report(clause, _SCOPED_FOLLOWUP)
+        if not scopes and symptom_in_clause:
+            scopes = _affirmed_match(clause, _AFFECTED_GROUP)
+        if scopes:
+            regions = _report_regions(clause, scopes[0]) or {None}
+        elif location and _affirmed_pattern(
+            clause, rf"{re.escape(location)}\s+(?:is\s+)?(?:still\s+)?(?:blocked|down|offline)\s+for\s+{_MULTI_USER}",
         ):
-            unresolved.add(region)
-            if region is None:
-                recovered.clear()
-            else:
-                recovered.discard(region)
+            regions = {location}
+        else:
+            continue
+        unresolved.update(regions)
+        recovered.difference_update(regions)
     return _OutageEvidence(unresolved, recovered) if unresolved or recovered else None
 
 
-def risk_signals(ticket: Ticket) -> tuple[_OutageEvidence | None, bool, bool]:
-    messages = [m.text.lower() for m in ticket.messages]
-    billing = any(_affirmed_pattern(m, p) for m in messages for p in _BILLING_PATTERNS) or reports_refund_dispute(ticket)
-    outage = _multi_user_outage(messages)
-    third_party = re.compile(r"\b(?:my coworker|my colleague|my friend|someone else|another customer)\b")
-    dark_bug = any(re.search(_APPEARANCE_TOPIC, m) and _DARK_DEFECT.search(m)
-                   and not third_party.search(m) for m in messages)
-    return outage, billing, dark_bug
+def _appearance_status(messages: list[str]) -> Literal["active", "recovered", "recovered_after_restart"] | None:
+    status = None
+    for message in messages:
+        if not re.search(_APPEARANCE_TOPIC, message, re.IGNORECASE) or _THIRD_PARTY_APPEARANCE.search(message):
+            continue
+        for clause, delimiter in _reported_clauses([message]):
+            if _affirmed_pattern(clause, _DARK_DEFECT.pattern):
+                status = "active"
+            elif status and delimiter != "?" and _affirmed_pattern(clause, _DARK_RECOVERY):
+                status = "recovered_after_restart" if _AFTER_RESTART.search(message) else "recovered"
+    return status
 
 
 def _outage_draft(outage: _OutageEvidence) -> str:
@@ -452,10 +537,17 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
             changes.append("handoff_draft_replaced_after_appearance_faq_rejection")
     data["kb_article_ids"] = grounded
 
-    outage, billing, dark_bug = risk_signals(ticket)
+    messages = [message.text for message in ticket.messages]
+    outage = _multi_user_outage(messages)
+    appeal, refund_declined = _refund_dispute_status(messages)
+    appearance = _appearance_status(messages)
     statement_charges = _reported_payment_count(ticket, _STATEMENT_CHARGES)
-    billing = billing or statement_charges is not None
-    failed_upgrade = any(_affirmed_pattern(message.text, _FAILED_UPGRADE) for message in ticket.messages)
+    billing = (
+        appeal == "active" or statement_charges is not None
+        or any(_affirmed_pattern(message, pattern)
+               for message in messages for pattern in (*_BILLING_PATTERNS, _STATEMENT_ENTRIES))
+    )
+    failed_upgrade = any(_affirmed_pattern(message, _FAILED_UPGRADE) for message in messages)
     if outage:
         if data["urgency"] != "critical":
             changes.append("multi_user_outage_min_critical")
@@ -476,7 +568,7 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
         old = data["urgency"]
         data["urgency"] = _floor_urgency(old, "high")
         if old != data["urgency"]:
-            changes.append("refund_dispute_min_high" if reports_refund_dispute(ticket) else "repeated_billing_min_high")
+            changes.append("refund_dispute_min_high" if appeal == "active" else "repeated_billing_min_high")
         if data["action"] != "escalate_to_human":
             changes.append("billing_dispute_requires_human_escalation")
         data["action"] = "escalate_to_human"
@@ -492,44 +584,76 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
                 f"Customer reports a failed upgrade and says their statement shows {statement_charges} charges. "
                 "Whether those charges settled is unverified."
             )
-    elif dark_bug:
-        old = data["urgency"]
-        data["urgency"] = _floor_urgency(old, "medium")
-        if data["urgency"] != old:
-            changes.append("reported_feature_defect_min_medium")
+    elif appeal == "withdrawn":
         if data["action"] == "auto_respond":
-            changes.append("unverified_defect_requires_specialist")
             data["action"] = "route_to_specialist"
+        data["assigned_team"] = "Billing Support"
+        data["summary"] = (
+            "Customer reports that their refund request was denied and asks to withdraw the appeal. "
+            "Completion has not been confirmed." if refund_declined
+            else "Customer asked to withdraw their refund appeal. Completion has not been confirmed."
+        )
+        data["draft_response"] = (
+            "Thank you for letting us know that you want to withdraw your appeal. "
+            "Billing Support can review that request. We cannot confirm that the appeal "
+            "has been closed or that a refund has been issued."
+        )
+        changes.append("refund_appeal_withdrawal_acknowledged")
+    elif appearance:
+        if appearance == "active":
+            old = data["urgency"]
+            data["urgency"] = _floor_urgency(old, "medium")
+            if data["urgency"] != old:
+                changes.append("reported_feature_defect_min_medium")
+            if data["action"] == "auto_respond":
+                changes.append("unverified_defect_requires_specialist")
+                data["action"] = "route_to_specialist"
+            data["draft_response"] = (
+                "Thanks for reporting the appearance issue. Product Support can investigate "
+                "how the app handles your appearance settings."
+            )
+        else:
+            if data["action"] == "auto_respond":
+                data["action"] = "route_to_specialist"
+            recovery_context = " after a restart" if appearance == "recovered_after_restart" else ""
+            data["summary"] = f"Customer reported an appearance issue and confirmed that the theme is working again{recovery_context}."
+            data["draft_response"] = (
+                f"Thanks for the update. You reported that your theme is working again{recovery_context}. "
+                "Product Support can review the earlier behavior if needed."
+            )
+            changes.append("reported_appearance_recovery_acknowledged")
         if data["action"] == "route_to_specialist":
             data["assigned_team"] = "Product Support"
-        data["draft_response"] = (
-            "Thanks for reporting the appearance issue. Product Support can investigate "
-            "how the app handles your appearance settings."
-        )
         if reports_dark_mode_scheduling(ticket):
             data["draft_response"] += " Scheduled dark-mode availability is still unverified."
             data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
                 "Scheduled dark-mode support is unverified"]))
-
-    # A single-user access failure or first failed upgrade is not necessarily an
-    # incident, but it is a defect requiring diagnosis rather than auto-closure.
-    if not outage and not billing and not dark_bug and (_access_problem(ticket) or _payment_failure(ticket)):
-        category = "access" if _access_problem(ticket) else "payment"
+    elif _access_problem(messages):
+        if (data["urgency"], data["action"], data["assigned_team"]) != ("medium", "route_to_specialist", "Technical Support"):
+            changes.append("access_issue_without_confirmed_wide_impact_routes_to_technical_support")
+        data["urgency"] = "medium"
+        data["action"] = "route_to_specialist"
+        data["assigned_team"] = "Technical Support"
+        data["draft_response"] = (
+            "Thank you for reporting this issue. A support specialist will review the "
+            "failure; its cause and resolution have not been confirmed."
+        )
+    elif _payment_failure(ticket):
         old = data["urgency"]
         data["urgency"] = _floor_urgency(old, "medium")
         if old != data["urgency"]:
-            changes.append(f"reported_{category}_failure_min_medium")
+            changes.append("reported_payment_failure_min_medium")
         if data["action"] == "auto_respond":
             changes.append("diagnostic_issue_requires_specialist")
             data["action"] = "route_to_specialist"
         if data["action"] == "route_to_specialist":
-            data["assigned_team"] = "Billing Support" if category == "payment" else "Technical Support"
+            data["assigned_team"] = "Billing Support"
         data["draft_response"] = (
             "Thank you for reporting this issue. A support specialist will review the "
             "failure; its cause and resolution have not been confirmed."
         )
 
-        attempts = _reported_payment_count(ticket, _PAYMENT_ATTEMPTS) if category == "payment" and failed_upgrade else None
+        attempts = _reported_payment_count(ticket, _PAYMENT_ATTEMPTS) if failed_upgrade else None
         if attempts is not None:
             data["summary"] = (
                 f"Customer reports the upgrade failed and they attempted to pay {attempts} times. "
