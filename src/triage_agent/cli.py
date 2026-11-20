@@ -19,7 +19,9 @@ def main(argv: list[str] | None = None) -> int:
     selection.add_argument("--all", action="store_true", help="Process all three supplied samples")
     selection.add_argument("--ticket-file", type=Path, help="Custom JSON ticket object or array")
     parser.add_argument("--output", type=Path, help="Write JSON output to this file")
-    parser.add_argument("--no-trace", action="store_true", help="Omit tool trace from JSON output")
+    detail = parser.add_mutually_exclusive_group()
+    detail.add_argument("--no-trace", action="store_true", help="Omit tool trace from JSON output")
+    detail.add_argument("--audit", action="store_true", help="Include model, original proposal and final result with tool trace")
     args = parser.parse_args(argv)
 
     try:
@@ -40,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         agent = GPTTriageAgent()
         results = []
         for ticket in tickets:
-            result = agent.run(ticket).model_dump()
+            result = agent.run_with_audit(ticket).model_dump() if args.audit else agent.run(ticket).model_dump()
             if args.no_trace:
                 result.pop("tool_trace", None)
             results.append(result)

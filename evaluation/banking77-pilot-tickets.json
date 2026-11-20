@@ -1,0 +1,274 @@
+[
+  {
+    "ticket_id": "B77-TEST-0814",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-0814",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "What is the fee charged with this card payment?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-0817",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-0817",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "I made a card payment and a fee is showing up?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-0833",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-0833",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "What fees apply when using a card?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-0835",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-0835",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "Why was I charged a fee when I paid with card?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1094",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1094",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "Why would there be a payment on my account I don't recognize?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1107",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1107",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "I'm not familiar with a card payment."
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1110",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1110",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "I don't know where this transaction came from?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1120",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1120",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "In my statement there is a payment that is I do not recognize"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1604",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1604",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "How do i finalize a card payment"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1612",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1612",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "I am seeing pending from the card payment I made."
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1627",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1627",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "I was double charged, and the second charge is showing as \"pending\". How long will it be before I get my money back once the second charge has been refunded?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1630",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1630",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "Explain what the pending payment means?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1811",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1811",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "Why was a transaction on my card declined?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1815",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1815",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "Why doesn't the card payment work"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1828",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1828",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "Please explain why my card was declined?"
+      }
+    ]
+  },
+  {
+    "ticket_id": "B77-TEST-1834",
+    "customer": {
+      "customer_id": "EXT-B77-TEST-1834",
+      "plan": "unknown",
+      "region": null,
+      "tenure_months": 0,
+      "seats": null,
+      "notes": ""
+    },
+    "messages": [
+      {
+        "when": "unknown",
+        "text": "I finally got my new card and was very excited to use it today. However, my payment kept declining. What is happening?"
+      }
+    ]
+  }
+]

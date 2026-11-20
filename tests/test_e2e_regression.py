@@ -2,24 +2,16 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
+from evaluation.paired import edge_ticket, load_edges
 from triage_agent.agent import GPTTriageAgent, load_tickets
 from triage_agent.cli import main
-from triage_agent.models import Customer, Message, Ticket
+from triage_agent.models import Message
 
 
-CASES = json.loads((Path(__file__).resolve().parents[1] / 'evaluation' / 'adversarial_cases.json').read_text(encoding='utf-8'))
-
-
-def edge_ticket(case_id: str, text: str) -> Ticket:
-    return Ticket(
-        ticket_id=case_id,
-        customer=Customer(customer_id='test-'+case_id, plan='Enterprise', tenure_months=1),
-        messages=[Message(when='now', text=text)],
-    )
+CASES = load_edges()
 
 
 @pytest.mark.parametrize('case', CASES, ids=lambda c: c['id'])

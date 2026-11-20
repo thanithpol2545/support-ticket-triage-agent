@@ -19,8 +19,16 @@ The original ticket outcomes and synthetic fixture expectations are project acce
 
 ## Authenticated OpenAI
 
-**NOT VERIFIED.** The review environment had no authorized `OPENAI_API_KEY`. Configure an authorized key using the [README](../README.md#openai-key-and-model), then run `python -m triage_agent --all --no-trace`. Compare all three results with the targets and confirm both required tool names for each ticket. Review extraction, citations and draft safety locally. Record ticket ID, configured model, successful tool names, urgency, action and policy overrides as evidence.
+The original offline review had no authorized key. A later authenticated run on `b66052b` processed all 46 evaluation tickets through the CLI, including the three original tickets. [Evaluation results](evaluation-results.md)
+
+To validate a newer commit, configure an authorized key using the [README](../README.md#openai-key-and-model) and run `python -m triage_agent --all --no-trace`. Compare all three results with the targets and confirm both required tool names for each ticket. Review extraction, citations and draft safety locally. Record ticket ID, configured model, successful tool names, urgency, action and policy overrides as evidence.
 
 ## Follow-up observations
 
 Prior QA observed that a specialist draft can retain a password request, four edge queries missed a relevant article when their text was used verbatim, and the appearance summary in the prior acceptance run omitted the System Default reproduction detail. Review draft text, retrieval recall and extraction during live evaluation. Reviewers need access to the private repository independently of these technical checks.
+
+## 2.1 External evaluation pilot
+
+The [BANKING77 pilot report](external-evaluation-pilot.md) documents the source, 16 sampled tickets and the scoring plan for `issue_types`. The authenticated baseline scored 6 of 14 tickets under that plan. Two await human label review. [Evaluation results](evaluation-results.md#4-banking77-pilot)
+
+The [reproducible evaluation report](evaluation-results.md) records the later baseline comparison, retrieval probes and reviewer commands.

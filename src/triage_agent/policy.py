@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from typing import NamedTuple
 
 from .models import AgentProposal, Ticket, TriageResult
 from .tools import ToolRegistry
@@ -59,7 +60,8 @@ _MULTI_USER = (
 )
 _OUTAGE_SYMPTOM = "(?:" + "|".join(_OUTAGE_PATTERNS) + ")"
 _LOCATION_WORD = r"(?!(?:no|none|not|never|without|can|cannot|is|are|was|were|has|have|and|or)\b)\w+"
-_SCOPE_LOCATION = rf"(?:\s+(?:in|at)\s+(?:{_LOCATION_WORD}[ -]){{0,3}}{_LOCATION_WORD})?"
+_LOCATION = rf"(?:{_LOCATION_WORD}[ -]){{0,3}}?{_LOCATION_WORD}"
+_SCOPE_LOCATION = rf"(?:\s+(?:in|at|across)\s+{_LOCATION})?"
 _GROUP_REPORT_WORDS = (
     _SCOPE_LOCATION + r"\s*(?:(?:also|still|now|are|is|keep|keeps|get|gets|getting|got|see|sees|seeing|"
     r"reported|report|reports|has|have|having|the|same|hit|affected|by|with|"
@@ -82,9 +84,103 @@ _SCOPED_FOLLOWUP = (
     r"\bsame\s+error\s+for\s+(?:(?:my|our|the)\s+)?" + _MULTI_USER,
 )
 _AFFECTED_GROUP = _MULTI_USER + _GROUP_REPORT_WORDS + r"\baffected\s*$"
-_DARK_DEFECT = re.compile(r"still\s+(?:shows?\s+)?light|not\s+working|doesn't\s+work|bug|ไม่ทำงาน", re.IGNORECASE)
-_APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light theme|appearance)\b|(?:โหมดมืด|ธีมมืด)"
+_DARK_DEFECT = re.compile(
+    r"(?:(?:still|continues?\s+to)\s+(?:(?:show|render|display|use|stay|remain)s?\s+)?"
+    r"|keeps?\s+(?:showing|rendering|displaying|using)\s+|(?:stays?|remains?|stuck)\s+)"
+    r"(?:(?:in|on)\s+)?(?:the\s+)?light\b"
+    r"|not\s+working|doesn't\s+work|bug|ไม่ทำงาน|ยัง(?:คง)?\s*(?:แสดง|ใช้|เป็น)?\s*(?:ธีม|โหมด)สว่าง",
+    re.IGNORECASE,
+)
+_APPEARANCE_TOPIC = r"\b(?:dark mode|dark theme|light mode|light theme|appearance)\b|(?:โหมด|ธีม)(?:มืด|สว่าง)"
 _CLAUSE_BREAK = re.compile(r"[.!?;\n,]|\b(?:but|however|yet)\b|แต่", re.IGNORECASE)
+_OUTAGE_CLAUSE_BREAK = re.compile(
+    rf"(,\s*but\b(?=\s+only\s+if\b)|{_CLAUSE_BREAK.pattern}|[–—]|(?<=\s)-(?=\s))", re.IGNORECASE,
+)
+_OUTAGE_CONTINUATIONS = {",", ";", "-", "–", "—"}
+_CONDITION_MARKER = (
+    r"\b(?:if|unless|in\s+case|in\s+the\s+event\s+that|suppose|supposing|assuming|provided\s+that)\b"
+    r"|ถ้า|หาก|สมมติว่า"
+)
+_HYPOTHETICAL = re.compile(rf"\bwhat\s+if\b|{_CONDITION_MARKER}", re.IGNORECASE)
+_POSTFIX_CONDITION = re.compile(rf"\s*(?:only\s+)?(?:{_CONDITION_MARKER})", re.IGNORECASE)
+_ONLY_IF = re.compile(r"\s*only\s+if\b", re.IGNORECASE)
+_INCIDENT_INSTRUCTION = (
+    r"(?:alert|ask|assign|call|check|contact|escalate|file|forward|inform|investigate|notify|"
+    r"open|page|ping|route|send|tell|triage)\b|"
+    r"(?!(?:then|and|but|or|so|if|as|since|because|once|while|yet|now)\b)[a-z]+\s+"
+    r"(?:it|this|them|us|me|(?:out|back|over|off)\s+to|(?:up|in)\s+(?:touch\s+)?with)\b"
+)
+_REQUEST_START = re.compile(
+    r"\s*(?:(?:please|what|when|where|who|how)\b|(?:can|could|would|should|do|are)\s+(?:you|we)\b|"
+    rf"let\s+(?:me|us)\s+know\b|(?:then\s+)?(?:do\s+not\s+)?(?:{_INCIDENT_INSTRUCTION}))",
+    re.IGNORECASE,
+)
+_COORDINATED_FOLLOWUP = re.compile(
+    r"\b(?:and|then)\s+(?:(?:please|(?:can|could|would|should)\s+(?:you|we|i))\b.*"
+    r"|(?:[\w'’-]+\s+){0,8}(?:know|wonder|ask|check|tell|confirm|see|advise)(?:\s+(?:me|us))?)\s*$",
+    re.IGNORECASE,
+)
+_OUTAGE_SCOPE_SUBJECT = rf"(?:{_MULTI_USER}|\b(?:users|employees|staff|system|service|app|site)\b)"
+_EXPLICIT_SCOPE = re.compile(
+    _OUTAGE_SCOPE_SUBJECT
+    + rf"\s+(?:in|at|across)\s+({_LOCATION})(?=\s+(?:also|still|now|can|can\s*not|can't|are|is|has|"
+    r"have|cannot|unable|get|gets|getting|got|see|sees|seeing|report|reported|reports|"
+    r"keep|keeps|experience|experiences|experiencing|back|restored)\b)",
+    re.IGNORECASE,
+)
+_SCOPE_PREFIX = (
+    r"^\s*(?:in|at|across)\s+(?!(?:case|fact|practice|theory|reality|general|short|summary)\b)"
+    rf"({_LOCATION})"
+)
+_LEADING_SCOPE = re.compile(_SCOPE_PREFIX + rf"\s+(?={_OUTAGE_SCOPE_SUBJECT})", re.IGNORECASE)
+_BARE_SCOPE = re.compile(_SCOPE_PREFIX + r"\s*$", re.IGNORECASE)
+_SCOPE_HEADING = re.compile(
+    r"^\s*(?!(?:status|update|report|alert|incident|outage|notes?|fyi|summary|context|question|example|"
+    r"impact|recovery|resolution|affected\s+(?:users|accounts|areas?|regions?)|symptoms?|scope|workaround|"
+    r"time|timeline|next\s+steps?|observations?|mitigation|current\s+assessment)\s*:)"
+    r"(?![\w -]*\b(?:reports?|notes?|summar(?:y|ies)|assessments?|timelines?|status|updates?|"
+    r"impacts?|recovery|resolution|restoration|findings?|evidence|symptoms?|workarounds?)\b[\w -]*:)"
+    rf"({_LOCATION})\s*:(?!\d)",
+    re.IGNORECASE,
+)
+_LOCATION_LABEL = re.compile(r"\b(?:office|region|branch|campus|site|zone|data\s*cent(?:er|re)|hub)$", re.IGNORECASE)
+_REGION_NAME = (
+    r"(?:\b(?:asia(?:[- ]pacific)?|apac|europe|eu|north america|south america|africa|oceania|australia)\b"
+    r"|เอเชีย|ยุโรป)"
+)
+_REGION_NAMES = {
+    "apac": "Asia-Pacific", "asia-pacific": "Asia-Pacific", "asia pacific": "Asia-Pacific",
+    "eu": "EU", "เอเชีย": "Asia", "ยุโรป": "Europe",
+}
+_ACCESS_RESTORED = (
+    r"\s+(?:can|(?:are|is)\s+able\s+to)\s+"
+    r"(?:log\s*in|sign\s*in|access(?:\s+\w+){0,5})\s+(?:again|now)\b"
+)
+_RECOVERY_PATTERNS = (
+    r"\b(?:everyone|all\s+(?:our\s+)?(?:users|employees|staff)|the\s+whole\s+team)\b"
+    + _SCOPE_LOCATION + _ACCESS_RESTORED,
+    r"\b(?:users|employees|staff)\s+(?:in|at|across)\s+" + _LOCATION + _ACCESS_RESTORED,
+    r"(?:\b(?:system|service|app|site)\b" + _SCOPE_LOCATION + r"|" + _REGION_NAME + r")"
+    r"\s+(?:(?:is|has\s+been)\s+)?(?:back\s+up|back\s+online|restored)\b",
+    r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ระบบ|แอป)(?:\s*ใน(?:เอเชีย|ยุโรป))?\s*"
+    r"(?:กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?|(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้แล้ว)",
+)
+_PASSWORD_REFERENCE = re.compile(r"\bpasswords?\b|รหัสผ่าน", re.IGNORECASE)
+_PASSWORD_OBJECT = r"(?:(?:your|the|current|existing|account|login)\s+){0,4}passwords?\b"
+_PASSWORD_SENTENCE_BREAK = re.compile(r"[.!?;\n]+")
+_SAFE_PASSWORD_ADVICE = re.compile(
+    r"(?:please\s+)?(?:"
+    r"(?:never|do\s+not|don['’]t)\s+(?:ever\s+)?"
+    r"(?:send|share|provide|give|tell|disclose|submit|confirm|reveal|ask\s+for)\s+"
+    r"(?:(?:with\s+)?(?:us|me|support)(?:\s+with)?\s+)?"
+    + _PASSWORD_OBJECT
+    + r"(?:\s+you\s+use\s+to\s+(?:sign|log)\s+in)?(?:\s+(?:to|with)\s+(?:anyone|support|us))?"
+    r"|(?:you\s+(?:can|may)\s+)?(?:reset|change)\s+" + _PASSWORD_OBJECT
+    + r"(?:\s+(?:in|from|through)\s+(?:your\s+(?:account\s+)?settings|the\s+sign-in\s+screen|the\s+app))?"
+    r"|(?:อย่า|ห้าม|ไม่ต้อง|ไม่ควร|ไม่จำเป็นต้อง)\s*(?:ส่ง|แชร์|แจ้ง|บอก|เปิดเผย|ระบุ)\s*รหัสผ่าน"
+    r"|(?:รีเซ็ต|เปลี่ยน)\s*รหัสผ่าน)",
+    re.IGNORECASE,
+)
 # In Thai access predicates such as เข้าไม่ได้, the failure is already reported.
 # The suffix does not negate a separate symptom that follows it.
 _NEGATION = re.compile(
@@ -103,9 +199,9 @@ _IMPACT_REPORT_NEGATION = re.compile(
 )
 
 
-def _affirmed_pattern(
+def _affirmed_match(
     message: str, pattern: str, *, negation: re.Pattern[str] = _NEGATION
-) -> bool:
+) -> re.Match[str] | None:
     """Match a clear signal unless directly negated in the same clause.
 
     This is intentionally modest: ambiguous wording should be handled by the
@@ -115,20 +211,50 @@ def _affirmed_pattern(
         prefix = message[max(0, found.start() - 65): found.start()]
         prefix = _CLAUSE_BREAK.split(prefix)[-1]
         if not negation.search(prefix):
-            return True
-    return False
+            return found
+    return None
 
 
+def _affirmed_pattern(
+    message: str, pattern: str, *, negation: re.Pattern[str] = _NEGATION
+) -> bool:
+    return _affirmed_match(message, pattern, negation=negation) is not None
+
+
+_FAILED_UPGRADE = (
+    r"\b(?:failed\s+to\s+upgrade|upgrade\s+(?:failed|was\s+unsuccessful|"
+    r"did(?:n['’]t|\s+not)\s+(?:go\s+through|succeed)))\b"
+    r"|อัปเกรด(?:แล้ว)?\s*(?:ไม่สำเร็จ|ไม่ได้|ไม่ผ่าน)"
+)
 _PAYMENT_FAILURE_PATTERNS = (
-    r"\b(?:payment\s+failed|failed\s+payment|upgrade\s+failed|failed\s+to\s+(?:pay|upgrade)|card\s+(?:was\s+)?declined)\b",
-    r"(?:ชำระเงิน|จ่ายเงิน|อัปเกรด)(?:ไม่สำเร็จ|ไม่ได้)",
+    _FAILED_UPGRADE,
+    r"\b(?:payment\s+failed|failed\s+payment|failed\s+to\s+pay|card\s+(?:was\s+)?declined)\b",
+    r"(?:ชำระเงิน|จ่ายเงิน)(?:ไม่สำเร็จ|ไม่ได้)",
+)
+_NUMBER_WORDS = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "สอง": 2, "สาม": 3, "สี่": 4, "ห้า": 5, "หก": 6, "เจ็ด": 7, "แปด": 8, "เก้า": 9, "สิบ": 10,
+}
+_REPEATED_COUNT = r"(?:[2-9]|[1-9][0-9]{1,3}|" + "|".join(_NUMBER_WORDS) + ")"
+_PAYMENT_ATTEMPTS = (
+    r"\b(?:(?:tried|attempted)\s+to\s+pay|retried\s+(?:the\s+)?payment|"
+    r"(?:clicked|pressed|tapped|hit)\s+(?:the\s+)?pay(?:ment)?(?:\s+button)?)\s+"
+    rf"({_REPEATED_COUNT})\s+times\b|(?:กด|ลอง|พยายาม)\s*(?:จ่าย|ชำระ(?:เงิน)?)(?:ไป)?\s*"
+    rf"({_REPEATED_COUNT})\s*(?:ครั้ง|รอบ)"
+)
+_STATEMENT_CHARGES = (
+    r"\bstatement\s+(?:shows?|lists?|has)\s+"
+    rf"({_REPEATED_COUNT})\s+(?:(?:pending|separate)\s+)?charges\b"
+    rf"|ใบแจ้งยอด\s*(?:ขึ้น|แสดง|มี)\s*รายการเรียกเก็บ(?:เงิน)?\s*({_REPEATED_COUNT})\s*รายการ"
 )
 
 
 def _access_problem(ticket: Ticket) -> bool:
     """Affirmed service-access symptoms, even when only one user is affected."""
-    return any(_affirmed_pattern(message.text.lower(), pattern)
-               for message in ticket.messages for pattern in _OUTAGE_PATTERNS)
+    return any(
+        _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
+        for clause, _ in _outage_clauses([message.text for message in ticket.messages])
+    )
 
 
 def reports_dark_mode_scheduling(ticket: Ticket) -> bool:
@@ -149,44 +275,159 @@ def _payment_failure(ticket: Ticket) -> bool:
                for message in ticket.messages for pattern in _PAYMENT_FAILURE_PATTERNS)
 
 
+def _reported_payment_count(ticket: Ticket, pattern: str) -> int | None:
+    for message in reversed(ticket.messages):
+        for clause in reversed(_CLAUSE_BREAK.split(message.text)):
+            match = _affirmed_match(clause, pattern)
+            if match and not _HYPOTHETICAL.search(clause):
+                count = (match[1] or match[2]).casefold()
+                return int(count) if count.isdecimal() else _NUMBER_WORDS[count]
+    return None
+
+
 def _floor_urgency(value: str, minimum: str) -> str:
     return value if RANK[value] >= RANK[minimum] else minimum
 
 
 def _outage_clauses(messages: list[str]) -> Iterator[tuple[str, str]]:
-    """Yield each clause together with its terminating delimiter."""
+    """Yield reports while keeping a conditional consequence with its premise."""
     for message in messages:
-        start = 0
-        for boundary in _CLAUSE_BREAK.finditer(message):
-            yield message[start:boundary.start()], boundary.group()
-            start = boundary.end()
-        yield message[start:], ""
+        parts = _OUTAGE_CLAUSE_BREAK.split(message)
+        clauses, delimiters = parts[::2], [*parts[1::2], ""]
+        conditional = False
+        leading_scope = ""
+        section_scope = ""
+        for index, (clause, delimiter) in enumerate(zip(clauses, delimiters)):
+            if not conditional:
+                heading = _SCOPE_HEADING.match(clause)
+                # An established scope survives inline fields until a clearly named location changes it.
+                if heading and (
+                    not section_scope or (delimiter == "\n" and not clause[heading.end():].strip())
+                    or _LOCATION_LABEL.search(heading[1])
+                    or re.fullmatch(_REGION_NAME, heading[1], re.IGNORECASE)
+                ):
+                    section_scope = heading.group().strip()
+                elif leading_scope:
+                    if delimiter == "\n" and not clause.strip():
+                        continue
+                    clause = f"{leading_scope} {clause.lstrip()}"
+                    leading_scope = ""
+                elif delimiter == "," and _BARE_SCOPE.fullmatch(clause):
+                    leading_scope = clause
+                    continue
+                elif section_scope and not _LEADING_SCOPE.match(clause):
+                    clause = f"{section_scope} {clause.lstrip()}"
+                if index + 1 < len(clauses):
+                    next_clause = clauses[index + 1]
+                    only_if = _ONLY_IF.match(next_clause)
+                    if only_if and (delimiter in _OUTAGE_CONTINUATIONS or delimiter.casefold().endswith("but")):
+                        continue
+                    if delimiter in _OUTAGE_CONTINUATIONS and _POSTFIX_CONDITION.match(next_clause):
+                        # A complete conditional request attaches its premise to the request itself.
+                        follows_with_request = (
+                            delimiters[index + 1] in _OUTAGE_CONTINUATIONS
+                            and _REQUEST_START.match(clauses[index + 2])
+                        )
+                        if not follows_with_request:
+                            continue
+                premise = _HYPOTHETICAL.search(clause)
+                if premise is None:
+                    yield clause, delimiter
+                else:
+                    conditional = True
+                    followup = _COORDINATED_FOLLOWUP.search(clause, 0, premise.start())
+                    if followup:
+                        yield clause[:followup.start()], "."
+            if delimiter not in _OUTAGE_CONTINUATIONS:
+                conditional = False
 
 
-def _multi_user_outage(messages: list[str]) -> bool:
+class _OutageEvidence(NamedTuple):
+    # None represents a report without a named region.
+    unresolved: set[str | None]
+    recovered: set[str | None]
+
+
+def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
+    unresolved: set[str | None] = set()
+    recovered: set[str | None] = set()
     symptom_reported = False
     for clause, delimiter in _outage_clauses(messages):
-        if any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_OUTAGE_PATTERNS):
-            return True
-        if delimiter != "?" and _affirmed_pattern(clause, _IMPACT_REPORT, negation=_IMPACT_REPORT_NEGATION):
-            return True
+        names = (
+            _EXPLICIT_SCOPE.findall(clause)
+            or _LEADING_SCOPE.findall(clause)
+            or _SCOPE_HEADING.findall(clause)
+            or re.findall(_REGION_NAME, clause, re.IGNORECASE)
+        )
+        regions = {_REGION_NAMES.get(name.casefold(), name.title()) for name in names}
+        region = next(iter(regions)) if len(regions) == 1 else None
+        if delimiter != "?" and any(_affirmed_pattern(clause, pattern) for pattern in _RECOVERY_PATTERNS):
+            if (unresolved or recovered) and len(regions) <= 1 and (region is not None or None in unresolved):
+                recovered.add(region)
+                if region in unresolved:
+                    unresolved.remove(region)
+                    symptom_reported = False
+            continue
         symptom_in_clause = _affirmed_pattern(clause, _OUTAGE_SYMPTOM)
         symptom_reported = symptom_reported or symptom_in_clause
-        if symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP):
-            return True
-        if symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP):
-            return True
-    return False
+        if (
+            any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_OUTAGE_PATTERNS)
+            or (delimiter != "?" and _affirmed_pattern(clause, _IMPACT_REPORT, negation=_IMPACT_REPORT_NEGATION))
+            or (symptom_reported and any(_affirmed_pattern(clause, pattern) for pattern in _SCOPED_FOLLOWUP))
+            or (symptom_in_clause and _affirmed_pattern(clause, _AFFECTED_GROUP))
+        ):
+            unresolved.add(region)
+            if region is None:
+                recovered.clear()
+            else:
+                recovered.discard(region)
+    return _OutageEvidence(unresolved, recovered) if unresolved or recovered else None
 
 
-def risk_signals(ticket: Ticket) -> tuple[bool, bool, bool]:
+def risk_signals(ticket: Ticket) -> tuple[_OutageEvidence | None, bool, bool]:
     messages = [m.text.lower() for m in ticket.messages]
     billing = any(_affirmed_pattern(m, p) for m in messages for p in _BILLING_PATTERNS) or reports_refund_dispute(ticket)
     outage = _multi_user_outage(messages)
     third_party = re.compile(r"\b(?:my coworker|my colleague|my friend|someone else|another customer)\b")
-    dark_bug = any("dark mode" in m and _DARK_DEFECT.search(m)
+    dark_bug = any(re.search(_APPEARANCE_TOPIC, m) and _DARK_DEFECT.search(m)
                    and not third_party.search(m) for m in messages)
     return outage, billing, dark_bug
+
+
+def _outage_draft(outage: _OutageEvidence) -> str:
+    recovered = ", ".join(sorted(region for region in outage.recovered if region is not None))
+    unresolved = ", ".join(sorted(region for region in outage.unresolved if region is not None))
+    if not outage.unresolved:
+        group = f"users in {recovered}" if recovered and None not in outage.recovered else "users"
+        return (
+            f"Thank you for confirming that {group} can access the system again. "
+            "We are sharing the earlier interruption with our incident team for follow-up. "
+            "The cause and regional scope are pending confirmation."
+        )
+    if recovered:
+        scope = f"in {unresolved}" if None not in outage.unresolved else "for the affected users"
+        return (
+            f"You reported that users in {recovered} can access the system again. "
+            f"Your latest report for {unresolved or 'the affected users'} says users could not access the system. "
+            f"Whether access has been restored {scope} remains unconfirmed. "
+            "We are escalating your report to our incident team for urgent investigation."
+        )
+    scope = f" in {unresolved}" if None not in outage.unresolved else ""
+    return (
+        f"We understand that several users{scope} cannot access the system. "
+        "We are escalating your report to our incident team for urgent investigation. "
+        "The cause, regional scope and recovery time are pending confirmation."
+    )
+
+
+def _unsafe_password_reference(draft: str) -> bool:
+    """Require every sentence in a password draft to be approved safety advice."""
+    if not _PASSWORD_REFERENCE.search(draft):
+        return False
+    return any(
+        sentence.strip() and not _SAFE_PASSWORD_ADVICE.fullmatch(sentence.strip())
+        for sentence in _PASSWORD_SENTENCE_BREAK.split(draft)
+    )
 
 
 def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> TriageResult:
@@ -196,12 +437,25 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
     grounded = list(dict.fromkeys(k for k in data["kb_article_ids"] if k in valid))
     if grounded != data["kb_article_ids"]:
         changes.append("unverified_kb_article_ids_removed")
-    if "KB-003" in grounded and not any(_affirmed_pattern(message.text, _APPEARANCE_TOPIC) for message in ticket.messages):
-        grounded.remove("KB-003")
-        changes.append("irrelevant_appearance_faq_removed")
+    if "KB-003" in data["kb_article_ids"] and not any(
+        _affirmed_pattern(message.text, _APPEARANCE_TOPIC) for message in ticket.messages
+    ):
+        if "KB-003" in grounded:
+            grounded.remove("KB-003")
+            changes.append("irrelevant_appearance_faq_removed")
+        # Handoffs can retain model text, so dropping the article alone leaves its advice in the draft.
+        if data["action"] != "auto_respond":
+            data["draft_response"] = (
+                "Thanks for reaching out. Our support team will review your question "
+                "and help you find the right guidance."
+            )
+            changes.append("handoff_draft_replaced_after_appearance_faq_rejection")
     data["kb_article_ids"] = grounded
 
     outage, billing, dark_bug = risk_signals(ticket)
+    statement_charges = _reported_payment_count(ticket, _STATEMENT_CHARGES)
+    billing = billing or statement_charges is not None
+    failed_upgrade = any(_affirmed_pattern(message.text, _FAILED_UPGRADE) for message in ticket.messages)
     if outage:
         if data["urgency"] != "critical":
             changes.append("multi_user_outage_min_critical")
@@ -210,11 +464,8 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
             changes.append("outage_requires_human_escalation")
         data["action"] = "escalate_to_human"
         data["assigned_team"] = "Infrastructure / On-call"
-        data["draft_response"] = (
-            "We understand that several users cannot access the system. "
-            "We are escalating your report to our incident team for urgent investigation. "
-            "The cause, regional scope and recovery time are pending confirmation."
-        )
+        # Keep the existing review of a broad outage while Support defines post-recovery routing.
+        data["draft_response"] = _outage_draft(outage)
         data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
             "Regional incident not confirmed", "Exact affected user count not verified"]))
         if billing:
@@ -236,6 +487,11 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
         )
         data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
             "Bank charges and refunds not verified"]))
+        if failed_upgrade and statement_charges is not None:
+            data["summary"] = (
+                f"Customer reports a failed upgrade and says their statement shows {statement_charges} charges. "
+                "Whether those charges settled is unverified."
+            )
     elif dark_bug:
         old = data["urgency"]
         data["urgency"] = _floor_urgency(old, "medium")
@@ -272,6 +528,22 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
             "Thank you for reporting this issue. A support specialist will review the "
             "failure; its cause and resolution have not been confirmed."
         )
+
+        attempts = _reported_payment_count(ticket, _PAYMENT_ATTEMPTS) if category == "payment" and failed_upgrade else None
+        if attempts is not None:
+            data["summary"] = (
+                f"Customer reports the upgrade failed and they attempted to pay {attempts} times. "
+                "Whether the attempts resulted in charges is unverified."
+            )
+            data["draft_response"] = (
+                "Thank you for reporting the failed upgrade and repeated attempts to pay. "
+                "We have not verified whether any of those attempts resulted in a charge. "
+                "Our support team will review the payment and upgrade status."
+            )
+            data["reasons"] = ["Customer reports an upgrade failure and repeated payment attempts"]
+            data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
+                "Whether the payment attempts resulted in charges is unverified"]))
+            changes.append("payment_attempts_distinguished_from_charges")
 
     # CRITICAL is always a human escalation, including when the model proposes
     # route_to_specialist rather than auto_respond.
@@ -326,6 +598,10 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
     if data["action"] != "auto_respond" and not data["assigned_team"]:
         changes.append("assigned_fallback_team")
         data["assigned_team"] = "General Support"
+
+    if _unsafe_password_reference(data["draft_response"]):
+        data["draft_response"] = "Thank you for contacting support. For your security, please do not share your password."
+        changes.append("password_request_replaced_with_safe_draft")
 
     data["reasons"] = list(dict.fromkeys([*data["reasons"], *changes]))
     return TriageResult(

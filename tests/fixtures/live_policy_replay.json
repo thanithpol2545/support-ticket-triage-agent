@@ -1,0 +1,329 @@
+{
+  "source_commit": "b66052be7478071148bee0ea793abf6052525e2e",
+  "response_model": "gpt-4.1-mini-2025-04-14",
+  "cases": {
+    "P05A": {
+      "proposal": {
+        "urgency": "high",
+        "product": "subscription upgrade/payment",
+        "issue_types": [
+          "payment failure",
+          "multiple charges",
+          "billing dispute"
+        ],
+        "sentiment": "concerned",
+        "action": "escalate_to_human",
+        "assigned_team": "billing_support",
+        "summary": "Customer attempted to upgrade but failed. Customer reported pressing payment three times, indicating possible multiple charges. No confirmed billing record found yet.",
+        "reasons": [
+          "Customer states upgrade unsuccessful",
+          "Customer reports paying 3 times",
+          "No confirmed billing record or refund status found",
+          "Multiple charges reported on failed upgrade attempt"
+        ],
+        "kb_article_ids": [
+          "KB-001"
+        ],
+        "draft_response": "ขอบคุณที่แจ้งปัญหาการใช้งานค่ะ เราได้รับข้อมูลว่าการอัปเกรดไม่สำเร็จและมีการชำระเงินซ้ำหลายครั้ง ทีมสนับสนุนด้านการเรียกเก็บเงินจะติดต่อกลับไปเพื่อตรวจสอบสถานะการชำระเงินและช่วยแก้ไขปัญหานี้ให้เร็วที่สุดค่ะ",
+        "uncertainties": [
+          "สถานะการเรียกเก็บเงินที่แน่นอน",
+          "จำนวนเงินที่ถูกตัดจริงจากบัตรหรือธนาคาร",
+          "รายละเอียดแผนที่ลูกค้าพยายามจะอัปเกรด"
+        ]
+      },
+      "calls": [
+        {
+          "name": "get_customer_history",
+          "arguments": {}
+        },
+        {
+          "name": "search_knowledge_base",
+          "arguments": {
+            "query": "upgrade payment failure multiple charges"
+          }
+        },
+        {
+          "name": "check_billing_status",
+          "arguments": {}
+        }
+      ],
+      "retrieved_kb_ids": [
+        "KB-001"
+      ]
+    },
+    "P05B": {
+      "proposal": {
+        "urgency": "high",
+        "product": "upgrade service",
+        "issue_types": [
+          "upgrade failure",
+          "billing dispute",
+          "multiple charges"
+        ],
+        "sentiment": "concerned",
+        "action": "escalate_to_human",
+        "assigned_team": "billing_support",
+        "summary": "Customer attempted an upgrade that failed and reports being charged three times. No confirmed billing record found yet, suggesting a possible billing system discrepancy or bank authorization issue.",
+        "reasons": [
+          "Customer reports upgrade failure",
+          "Customer reports multiple billing charges",
+          "No confirmed billing record found in system",
+          "Knowledge base article indicates need for billing support review in such cases"
+        ],
+        "kb_article_ids": [
+          "KB-001"
+        ],
+        "draft_response": "สวัสดีครับ ขอบคุณที่แจ้งปัญหาการอัปเกรดและรายการเรียกเก็บหลายรายการ เราจะส่งเรื่องนี้ให้ทีมสนับสนุนด้านการเรียกเก็บเงินตรวจสอบอย่างละเอียด และจะแจ้งให้ทราบถึงผลการดำเนินการต่อไปครับ",
+        "uncertainties": [
+          "Customer's original plan details unknown",
+          "No region info for system status check",
+          "Whether the charges are pending authorizations or captured charges is unclear"
+        ]
+      },
+      "calls": [
+        {
+          "name": "get_customer_history",
+          "arguments": {}
+        },
+        {
+          "name": "search_knowledge_base",
+          "arguments": {
+            "query": "upgrade failure multiple billing charges"
+          }
+        },
+        {
+          "name": "check_billing_status",
+          "arguments": {}
+        }
+      ],
+      "retrieved_kb_ids": [
+        "KB-001"
+      ]
+    },
+    "P07A": {
+      "proposal": {
+        "urgency": "low",
+        "product": "unknown",
+        "issue_types": [
+          "feature inquiry"
+        ],
+        "sentiment": "neutral",
+        "action": "auto_respond",
+        "assigned_team": null,
+        "summary": "Customer asks for instructions to set dark mode following System Default.",
+        "reasons": [
+          "Customer requests guidance on setting dark mode according to system default.",
+          "No reported functionality defects or account issues."
+        ],
+        "kb_article_ids": [
+          "KB-003"
+        ],
+        "draft_response": "สวัสดีครับ สำหรับการตั้งค่าโหมดมืดให้ตรงกับการตั้งค่าของระบบ (System Default) คุณสามารถเข้าไปที่เมนู การตั้งค่า (Settings) > ลักษณะการแสดงผล (Appearance) ในแอปของเราเพื่อตรวจสอบดูนะครับ ถ้าแอปไม่ทำงานตามที่ตั้งค่าระบบไว้ ขอให้บันทึกเวอร์ชันแอปและระบบปฏิบัติการ พร้อมขั้นตอนที่ทำซ้ำได้ และติดต่อฝ่ายสนับสนุนผลิตภัณฑ์เพื่อขอความช่วยเหลือเพิ่มเติมครับ",
+        "uncertainties": [
+          "ไม่ทราบผลิตภัณฑ์หรือแอปที่ลูกค้าใช้งาน"
+        ]
+      },
+      "calls": [
+        {
+          "name": "get_customer_history",
+          "arguments": {}
+        },
+        {
+          "name": "search_knowledge_base",
+          "arguments": {
+            "query": "ตั้ง dark mode ตาม System Default"
+          }
+        }
+      ],
+      "retrieved_kb_ids": [
+        "KB-003"
+      ]
+    },
+    "P07B": {
+      "proposal": {
+        "urgency": "low",
+        "product": "mobile app",
+        "issue_types": [
+          "feature not working",
+          "usability issue"
+        ],
+        "sentiment": "neutral",
+        "action": "auto_respond",
+        "assigned_team": null,
+        "summary": "Customer reports that the app does not switch to dark mode when set to follow System Default theme, instead it stays in light mode.",
+        "reasons": [
+          "Customer described app dark mode not following system default setting"
+        ],
+        "kb_article_ids": [
+          "KB-003"
+        ],
+        "draft_response": "สวัสดีครับ ขอบคุณที่แจ้งปัญหาเกี่ยวกับการตั้ง dark mode ตาม System Default แล้วแอปยังคงแสดงเป็นธีมสว่าง เราขอแนะนำให้ตรวจสอบเวอร์ชันของแอปและระบบปฏิบัติการของท่าน เพื่อช่วยวินิจฉัยปัญหาให้ชัดเจนขึ้น หากยังคงพบปัญหาอยู่ กรุณาติดต่อฝ่ายสนับสนุนผลิตภัณฑ์พร้อมรายละเอียดเหล่านี้ ขอบคุณครับ",
+        "uncertainties": [
+          "Customer's app version and operating system not known",
+          "No confirmation if customer has tried basic troubleshooting"
+        ]
+      },
+      "calls": [
+        {
+          "name": "get_customer_history",
+          "arguments": {}
+        },
+        {
+          "name": "search_knowledge_base",
+          "arguments": {
+            "query": "app dark mode follows system default theme not working"
+          }
+        }
+      ],
+      "retrieved_kb_ids": [
+        "KB-003"
+      ]
+    },
+    "TICKET-001": {
+      "proposal": {
+        "urgency": "high",
+        "product": "Subscription Upgrade",
+        "issue_types": [
+          "billing issue",
+          "account access",
+          "payment failure"
+        ],
+        "sentiment": "frustrated",
+        "action": "escalate_to_human",
+        "assigned_team": "Billing Support",
+        "summary": "Customer attempted to upgrade from Free to Pro but faced multiple pending and charged transactions without Pro account activation. Customer reports 3 bank charges but no refunds or Pro access; requires urgent billing investigation before a bank dispute occurs.",
+        "reasons": [
+          "Multiple charges reported by customer but no Pro access granted",
+          "Customer attempted multiple payment methods with unauthorized charges",
+          "Billing system record shows upgrade attempt but no settled charges or refunds confirmed",
+          "Customer has presentation in 2 hours demanding quick resolution",
+          "Customer threatening to dispute charges with bank"
+        ],
+        "kb_article_ids": [
+          "KB-001"
+        ],
+        "draft_response": "We acknowledge the frustrations caused by the multiple charges and lack of Pro upgrade access. Our Billing Support team is urgently investigating the charges and account status to resolve this as quickly as possible. We appreciate your patience and will update you as soon as we have more information.",
+        "uncertainties": [
+          "Whether the customer's bank charges have settled or are pending authorizations",
+          "Verification status of captured charges",
+          "Exact cause of repeated failed payment attempts"
+        ]
+      },
+      "calls": [
+        {
+          "name": "get_customer_history",
+          "arguments": {}
+        },
+        {
+          "name": "search_knowledge_base",
+          "arguments": {
+            "query": "payment failed upgrade to Pro multiple pending charges no Pro access refund dispute bank"
+          }
+        },
+        {
+          "name": "check_billing_status",
+          "arguments": {}
+        }
+      ],
+      "retrieved_kb_ids": [
+        "KB-001",
+        "KB-002"
+      ]
+    },
+    "TICKET-002": {
+      "proposal": {
+        "urgency": "high",
+        "product": "Enterprise Regional Access",
+        "issue_types": [
+          "service_outage",
+          "regional_access_issue"
+        ],
+        "sentiment": "frustrated",
+        "action": "escalate_to_human",
+        "assigned_team": "Regional Infrastructure Incident Response",
+        "summary": "Customer in Thailand with Enterprise plan reports system inaccessible with HTTP 500 error across multiple browsers and users. They have a high-impact demo scheduled soon and status page shows all systems operational but they are still experiencing outage. No public incident confirmed but regional diagnostics unavailable and customer impact critical.",
+        "reasons": [
+          "System inaccessible with error 500 reported by multiple users and devices",
+          "Customer has important demo with high stakes scheduled soon",
+          "Public system status shows operational, but regional diagnostics not available",
+          "First critical issue from customer, indicating high priority escalation"
+        ],
+        "kb_article_ids": [
+          "KB-002"
+        ],
+        "draft_response": "เรียนลูกค้า ขอบคุณที่แจ้งปัญหาเข้ามา ตอนนี้เราได้รับรายงานว่าระบบมีปัญหาเข้าใช้งานไม่ได้ error 500 ในพื้นที่เอเชียและกำลังเร่งตรวจสอบอย่างเร่งด่วน ทางสถานะระบบสาธารณะแสดงว่าทำงานปกติ แต่เราทราบว่านี่อาจเป็นปัญหาเฉพาะลูกค้าหรือพื้นที่ของท่าน เราได้ส่งเรื่องให้ทีมโครงสร้างพื้นฐานภาคพื้นที่เพื่อแก้ไขโดยด่วน ขอให้ท่านรออัปเดตจากเราภายในเร็วๆ นี้และขออภัยในความไม่สะดวกที่เกิดขึ้นครับ",
+        "uncertainties": [
+          "No confirmed incident for Asia region but diagnostics unavailable",
+          "Exact root cause and ETA for resolution unknown"
+        ]
+      },
+      "calls": [
+        {
+          "name": "get_customer_history",
+          "arguments": {}
+        },
+        {
+          "name": "search_knowledge_base",
+          "arguments": {
+            "query": "Error 500 system inaccessible Asia region Thailand"
+          }
+        },
+        {
+          "name": "check_system_status",
+          "arguments": {
+            "region": "Asia"
+          }
+        }
+      ],
+      "retrieved_kb_ids": [
+        "KB-002",
+        "KB-003"
+      ]
+    },
+    "TICKET-003": {
+      "proposal": {
+        "urgency": "low",
+        "product": "app appearance feature",
+        "issue_types": [
+          "feature inquiry",
+          "potential bug report"
+        ],
+        "sentiment": "neutral",
+        "action": "auto_respond",
+        "assigned_team": null,
+        "summary": "Customer asks about dark mode availability on Pro plan, reports no dark toggle seen and app not following system dark mode, and wonders about scheduled auto-switch feature.",
+        "reasons": [
+          "Customer on Pro plan does not see dark mode toggle in Settings > Appearance",
+          "Customer says app does not follow system dark mode despite selection",
+          "Customer inquires if scheduled dark mode switch exists",
+          "Knowledge base clarifies no confirmed dark mode toggle or scheduled auto-switch feature currently",
+          "Knowledge base advises collecting app and OS data for bug diagnostics"
+        ],
+        "kb_article_ids": [
+          "KB-003"
+        ],
+        "draft_response": "Hi! Thanks for reaching out. Regarding dark mode, currently our app appearance settings include Light and System Default themes. If you select System Default and your Mac is in dark mode, the app should follow that, so if it doesn't, this might be a bug. Could you please let us know your app version and macOS version so we can investigate? About scheduling dark mode to switch automatically at a certain time, that feature isn't available at this moment but we appreciate the suggestion!",
+        "uncertainties": [
+          "Exact app version and operating system of the customer",
+          "Whether the issue is reproducible with diagnostics information"
+        ]
+      },
+      "calls": [
+        {
+          "name": "get_customer_history",
+          "arguments": {}
+        },
+        {
+          "name": "search_knowledge_base",
+          "arguments": {
+            "query": "dark mode feature app settings appearance system default Pro plan missing option bug or not scheduled dark mode auto-switch time"
+          }
+        }
+      ],
+      "retrieved_kb_ids": [
+        "KB-003",
+        "KB-001"
+      ]
+    }
+  }
+}

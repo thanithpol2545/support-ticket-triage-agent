@@ -1,2 +1,4 @@
-include evaluation/adversarial_cases.json
+include evaluation/*.json evaluation/*.py
+include docs/external-evaluation-pilot.md docs/evaluation-results.md docs/paired-scoring-rubric.md
 include tests/conftest.py
+include tests/fixtures/live_policy_replay.json

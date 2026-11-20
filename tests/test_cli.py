@@ -60,6 +60,23 @@ def test_cli_defaults_to_first_ticket(tickets, mock_openai, capsys):
     assert mock_openai.create.call_count == 3
 
 
+def test_cli_audit_records_one_trajectory(tickets, mock_openai, tmp_path, capsys):
+    mock_openai.queue(tickets["TICKET-002"], query="HTTP 500 access")
+    mock_openai.replies[-1].model = "gpt-test-snapshot"
+    output = tmp_path / "audit.json"
+    assert main(["--ticket", "TICKET-002", "--audit", "--output", str(output)]) == 0
+    audit = json.loads(output.read_text(encoding="utf-8"))
+    assert audit == json.loads(capsys.readouterr().out)
+    assert audit["configured_model"] == "gpt-4.1-mini"
+    assert audit["response_model"] == "gpt-test-snapshot"
+    assert audit["proposal"]["urgency"] == "low"
+    assert audit["result"]["urgency"] == "critical"
+    trace = audit["result"]["tool_trace"]
+    assert [event["name"] for event in trace] == ["get_customer_history", "search_knowledge_base"]
+    assert trace[1]["arguments"]["query"] == "HTTP 500 access"
+    assert mock_openai.create.call_count == 3
+
+
 def test_cli_ticket_file_batch_preserves_order(tickets, mock_openai, tmp_path, capsys):
     batch = [tickets["TICKET-003"], tickets["TICKET-001"]]
     path = tmp_path / "tickets.json"
