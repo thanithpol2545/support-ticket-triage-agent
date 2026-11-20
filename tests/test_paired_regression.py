@@ -521,3 +521,104 @@ def test_audit_appearance_handoff_uses_latest_theme_status(relapsed, run_audit):
         assert final["urgency"] == "low"
         assert "working again" in final["summary"].lower()
         assert "working again" in final["draft_response"].lower()
+
+
+@pytest.mark.parametrize(
+    "messages,expected_scope",
+    [
+        pytest.param(
+            ["เมื่อเช้าทีมลำปางกับทีมอุดรธานีล็อกอินไม่ได้กันทั้งสองทีม ขึ้น HTTP 500",
+             "ทีมลำปางกลับเข้าได้ครบแล้ว แต่ที่อุดรธานีทุกคนยังล็อกอินไม่ได้ ขึ้น HTTP 500"],
+            ("ลำปาง", "อุดรธานี"), id="thai-teams",
+        ),
+        pytest.param(
+            ["All staff in York and all staff in Bath saw HTTP 500 on sign-in.",
+             "The York office can sign in again. Staff at our Bath office are still blocked by HTTP 500."],
+            ("York", "Bath"), id="english-offices",
+        ),
+    ],
+)
+def test_audit_scope_followup_tracks_recovery_and_current_impact(messages, expected_scope, run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [Message(when=str(i), text=text) for i, text in enumerate(messages)]
+    final = run_audit(ticket, query="HTTP 500", kb_article_ids=["KB-002"], urgency="high",
+                      action="escalate_to_human", assigned_team="Incident Response")["result"]
+
+    assert (final["urgency"], final["action"], final["assigned_team"]) == (
+        "critical", "escalate_to_human", "Infrastructure / On-call",
+    )
+    recovered, affected = expected_scope
+    assert f"users in {recovered} can access the system again" in final["draft_response"]
+    assert f"latest report for {affected} says users could not access" in final["draft_response"]
+
+
+def test_audit_thai_denied_http_500_keeps_documentation_intent(run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [Message(when="now", text="ทีมเราไม่เจอ HTTP 500 กันเลย ทุกคนเข้าสู่ระบบได้ ขอคู่มือเริ่มต้นครับ")]
+    final = run_audit(ticket, query="general documentation guide", kb_article_ids=["KB-004"])["result"]
+
+    assert (final["urgency"], final["action"], final["kb_article_ids"]) == ("low", "auto_respond", ["KB-004"])
+
+
+def test_audit_thai_team_at_location_escalates_confirmed_impact(run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [Message(when="now", text="พนักงานทั้งทีมที่กระบี่ขึ้น HTTP 500 ตอนล็อกอิน ช่วยดูว่าเฉพาะทีมเราหรือเปล่า?")]
+    final = run_audit(ticket, query="HTTP 500", kb_article_ids=["KB-002"])["result"]
+    assert (final["urgency"], final["action"], final["assigned_team"]) == (
+        "critical", "escalate_to_human", "Infrastructure / On-call",
+    )
+    assert "regional scope" in final["draft_response"] and "pending confirmation" in final["draft_response"]
+
+
+def test_audit_recovery_acknowledges_normal_sign_in_after_past_failures(run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [
+        Message(when="1", text="All staff in Nagoya were getting HTTP 500."),
+        Message(when="2", text="Everyone in Nagoya can sign in normally again."),
+    ]
+    final = run_audit(ticket, query="HTTP 500", kb_article_ids=["KB-002"])["result"]
+
+    assert "users in Nagoya can access the system again" in final["draft_response"]
+    assert "cannot access" not in final["draft_response"]
+
+
+@pytest.mark.parametrize(
+    "text,urgency,single",
+    [
+        pytest.param(
+            "My login throws HTTP 500. Two teammates tested independently and confirmed the identical error.",
+            "high", False, id="corroborated-high",
+        ),
+        pytest.param(
+            "My login throws HTTP 500. Two teammates tested independently and confirmed the identical error.",
+            "critical", False, id="corroborated-critical",
+        ),
+        pytest.param("I get HTTP 500 on sign-in.", "high", False, id="scope-unknown"),
+        pytest.param(
+            "My login throws HTTP 500. I haven't heard back from the rest of the team yet.",
+            "high", True, id="one-confirmed-reporter",
+        ),
+        pytest.param(
+            "Only my login returns HTTP 500. My teammates tested separately and can sign in.",
+            "high", True, id="other-users-unaffected",
+        ),
+        pytest.param(
+            "My login throws HTTP 500. I hadn't heard back from the team. Two teammates later confirmed the identical error.",
+            "high", False, id="later-corroboration",
+        ),
+    ],
+)
+def test_audit_access_fallback_requires_evidence_before_downgrading(text, urgency, single, run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [Message(when="now", text=text)]
+    final = run_audit(
+        ticket, query="HTTP 500", kb_article_ids=["KB-002"], urgency=urgency,
+        action="escalate_to_human", assigned_team="Infrastructure / On-call",
+    )["result"]
+    actual = (final["urgency"], final["action"], final["assigned_team"])
+    if single:
+        assert actual == ("medium", "route_to_specialist", "Technical Support")
+    else:
+        assert actual == (urgency, "escalate_to_human", "Infrastructure / On-call")
+        assert "scope" in final["draft_response"].lower()
+        assert "unconfirmed" in final["draft_response"].lower()

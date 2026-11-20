@@ -52,12 +52,13 @@ _WITHDRAW_APPEAL = (
 )
 _HTTP_500 = r"\b(?:http\s*500|error\s*500|server\s*error\s*500)\b"
 _ACCESS_VERB = r"(?:log\s*in|sign\s*in|access|(?:open|load|reach)\s+(?:(?:the|our)\s+)?(?:log[- ]?in|sign[- ]?in)\s+page)"
+_THAI_ACCESS_VERB = r"(?:เข้า(?:สู่ระบบ|ระบบ|ใช้งาน)?|ล็อ[กค]อิน|ใช้งาน)"
 _OUTAGE_PATTERNS = (
     _HTTP_500,
     r"\b(?:production|system|service|platform|site|app)\s+(?:is\s+)?(?:completely\s+|totally\s+)?(?:down|unavailable|inaccessible|offline)\b",
     rf"\b(?:can\s*not|can['’]t|could\s*not|couldn['’]t|unable\s+to)\s+{_ACCESS_VERB}\b",
     r"(?:ระบบ|แอป|เว็บไซต์)(?:ล่ม|ใช้งานไม่ได้|เข้าไม่ได้)",
-    r"(?:เข้า(?:ระบบ|ใช้งาน)?ไม่ได้|ใช้งานไม่ได้|ไม่สามารถ(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้)",
+    rf"(?:{_THAI_ACCESS_VERB}ไม่ได้|ไม่สามารถ{_THAI_ACCESS_VERB}ได้)",
 )
 _MULTI_USER = (
     r"(?:\b(?:coworkers|colleagues|multiple\s+(?:users|employees|people)|everyone|"
@@ -70,21 +71,33 @@ _LOCATION_WORD = r"(?!(?:no|none|not|never|without|can|cannot|is|are|was|were|ha
 _LOCATION = rf"(?:{_LOCATION_WORD}[ -]){{0,3}}?{_LOCATION_WORD}"
 _SCOPE_LOCATION = rf"(?:\s+(?:in|at|across)\s+{_LOCATION})?"
 _GROUP_REPORT_WORDS = (
-    _SCOPE_LOCATION + r"\s*(?:(?:also|still|now|are|is|keep|keeps|get|gets|getting|got|see|sees|seeing|"
+    _SCOPE_LOCATION + r"\s*(?:(?:also|still|now|are|is|were|was|keep|keeps|get|gets|getting|got|see|sees|seeing|saw|"
     r"reported|report|reports|has|have|having|the|same|hit|affected|blocked|by|with|"
     r"experienc(?:e|es|ing))\s+){0,6}(?:\s|ก็|ยัง|คง|ต่าง){0,12}"
 )
+_THAI_SCOPE_NAME = (
+    r"(?:(?!กับ|และ|ทั้งสอง|ทุกคน|พนักงาน|ยัง|กลับ|เข้า|ล็อ[กค]อิน|ใช้งาน|ขึ้น|เจอ|พบ|ก็)[ก-๙]){1,26}"
+)
+_THAI_GROUP_LABEL = r"(?:ทีม|สาขา|สำนักงาน|ออฟฟิศ)(?:ที่|ใน)?"
+_THAI_SITED_GROUP = rf"{_THAI_GROUP_LABEL}\s*{_THAI_SCOPE_NAME}"
+_THAI_NAMED_SCOPE = re.compile(
+    rf"(?:{_THAI_GROUP_LABEL}|^\s*ที่)\s*({_THAI_SCOPE_NAME})"
+    r"(?=\s*(?:กับ|และ|ทั้งสอง|ทุกคน|พนักงาน|ยัง|กลับ|เข้า|ล็อ[กค]อิน|ใช้งาน|ขึ้น|เจอ|พบ|ก็))"
+)
 _THAI_GROUP_LOCATION = (
-    r"(?:ใน(?:ทีม|สาขา|สำนักงาน|ออฟฟิศ|ภูมิภาค)"
-    r"(?:(?!แต่|และ|หรือ|ยังไม่ได้|เข้า|ใช้งาน|กลับมา)[ก-๙a-z -]){0,30}?)?"
+    r"(?:(?:ใน(?:ทีม|สาขา|สำนักงาน|ออฟฟิศ|ภูมิภาค)|ที่)"
+    r"(?:(?!แต่|และ|หรือ|ยังไม่ได้|เข้า|ล็อ[กค]อิน|ขึ้น|ใช้งาน|กลับมา)[ก-๙a-z -]){0,30}?)?"
 )
 _LOCATED_GROUP = rf"{_MULTI_USER}\s+(?:in|at|across)\s+{_LOCATION}"
 # Bind the affected group to the symptom. A group mentioned as unaffected in a
 # neighboring clause or message does not establish broader impact.
 _SCOPED_OUTAGE_PATTERNS = (
     rf"{_LOCATED_GROUP}(?:\s+and\s+{_LOCATED_GROUP})+" + _GROUP_REPORT_WORDS + _OUTAGE_SYMPTOM,
+    rf"{_THAI_SITED_GROUP}(?:\s*(?:กับ|และ)\s*{_THAI_SITED_GROUP})+"
+    + r"\s*(?:ก็|ยัง|คง|ต่าง)?\s*" + _OUTAGE_SYMPTOM,
     _MULTI_USER + _GROUP_REPORT_WORDS + _OUTAGE_SYMPTOM,
-    _MULTI_USER + _THAI_GROUP_LOCATION + r"\s*(?:ก็|ยัง|คง|ต่าง)?\s*" + _OUTAGE_SYMPTOM,
+    rf"\b(?:users|employees|staff)\s+(?:in|at|across)\s+{_LOCATION}" + _GROUP_REPORT_WORDS + _OUTAGE_SYMPTOM,
+    _MULTI_USER + _THAI_GROUP_LOCATION + r"\s*(?:ก็|ยัง|คง|ต่าง)?\s*(?:ขึ้น\s*)?" + _OUTAGE_SYMPTOM,
     _OUTAGE_SYMPTOM + r"\s+(?:for|affecting|across|reported by)\s+(?:(?:my|our|the)\s+)?" + _MULTI_USER,
     _OUTAGE_SYMPTOM + r"\s+company-wide\b",
     r"\b(?:no one|nobody|none\s+of\s+(?:(?:our|my|the)\s+)?" + _MULTI_USER + r")"
@@ -149,7 +162,7 @@ _OUTAGE_SCOPE_SUBJECT = rf"(?:{_MULTI_USER}|\b(?:users|employees|staff|system|se
 _EXPLICIT_SCOPE = re.compile(
     _OUTAGE_SCOPE_SUBJECT
     + rf"\s+(?:in|at|across)\s+({_LOCATION})(?=\s+(?:also|still|now|can|could|can\s*not|can't|are|is|were|was|has|"
-    r"have|cannot|unable|get|gets|getting|got|see|sees|seeing|report|reported|reports|"
+    r"have|cannot|unable|get|gets|getting|got|see|sees|seeing|saw|report|reported|reports|"
     r"keep|keeps|experience|experiences|experiencing|back|restored)\b"
     rf"|\s+and\s+(?={_OUTAGE_SCOPE_SUBJECT}))",
     re.IGNORECASE,
@@ -181,18 +194,22 @@ _REGION_NAMES = {
 _RESTORED_ACCESS_VERB = r"(?:log\s*in|sign\s*in|access(?:\s+\w+){0,5})"
 _ACCESS_RESTORED = (
     r"\s+(?:can|could|(?:are|is|were|was)\s+able\s+to)\s+"
-    rf"(?:now\s+{_RESTORED_ACCESS_VERB}|{_RESTORED_ACCESS_VERB}\s+(?:again|now))\b"
+    rf"(?:now\s+{_RESTORED_ACCESS_VERB}|{_RESTORED_ACCESS_VERB}\s+(?:(?:normally|successfully)\s+)?(?:again|now))\b"
 )
 _SITE_RESTORED = r"\s+(?:(?:is|has\s+been)\s+)?(?:back\s+up|back\s+online|restored)\b"
+_LOCATION_QUALIFIER = r"(?:office|region|branch|campus|site)"
+_THAI_ACCESS_RESTORED = (
+    rf"(?:กลับ(?:มา)?{_THAI_ACCESS_VERB}ได้(?:ครบ|ตามเดิม|ตามปกติ)?(?:แล้ว)?"
+    rf"|{_THAI_ACCESS_VERB}ได้(?:ครบ|ตามเดิม|ตามปกติ)?แล้ว)"
+)
 _RECOVERY_PATTERNS = (
     r"\b(?:everyone|all\s+(?:our\s+)?(?:users|employees|staff)|the\s+whole\s+team)\b"
     + _SCOPE_LOCATION + _ACCESS_RESTORED,
     r"\b(?:users|employees|staff)\s+(?:in|at|across)\s+" + _LOCATION + _ACCESS_RESTORED,
     r"(?:\b(?:system|service|app|site)\b" + _SCOPE_LOCATION + r"|" + _REGION_NAME + r")" + _SITE_RESTORED,
     r"(?:ทุกคน|ทั้งทีม|ทั้งองค์กร|ทั้งบริษัท|ทั้งสาขา|ทั้งสำนักงาน|ระบบ|แอป)"
-    + rf"(?:\s*ใน(?:เอเชีย|ยุโรป)|{_THAI_GROUP_LOCATION})\s*"
-    r"(?:กลับ(?:มา)?(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:แล้ว)?"
-    r"|(?:เข้า(?:ระบบ|ใช้งาน)?|ใช้งาน)ได้(?:ตามเดิม|ตามปกติ)?แล้ว)",
+    + rf"(?:\s*ใน(?:เอเชีย|ยุโรป)|{_THAI_GROUP_LOCATION})\s*" + _THAI_ACCESS_RESTORED,
+    _THAI_SITED_GROUP + r"\s*(?:ทุกคน\s*)?" + _THAI_ACCESS_RESTORED,
 )
 _PASSWORD_REFERENCE = re.compile(r"\bpasswords?\b|รหัสผ่าน", re.IGNORECASE)
 _PASSWORD_OBJECT = r"(?:(?:your|the|current|existing|account|login)\s+){0,4}passwords?\b"
@@ -215,7 +232,7 @@ _SAFE_PASSWORD_ADVICE = re.compile(
 _NEGATION = re.compile(
     r"(?:\b(?:no|none|not|never|without|did\s+not|didn't|is\s+not|isn't|was\s+not|wasn't|"
     r"have\s+not|haven't|aren't|there\s+is\s+no)\b|"
-    r"(?:(?<!เข้า)(?<!เข้าระบบ)(?<!ใช้งาน)ไม่ได้|ไม่พบ|ไม่มี|ไม่ใช่))"
+    r"(?:(?<!เข้า)(?<!เข้าระบบ)(?<!เข้าสู่ระบบ)(?<!ใช้งาน)(?<!ล็อกอิน)(?<!ล็อคอิน)ไม่ได้|ไม่พบ|ไม่เจอ|ไม่มี|ไม่ใช่))"
     r"(?:[\w\sก-๙'-]{0,24})$",
     re.IGNORECASE,
 )
@@ -304,6 +321,39 @@ def _access_symptom(clause: str) -> bool:
 def _access_problem(messages: list[str]) -> bool:
     """Affirmed service-access symptoms, even when only one user is affected."""
     return any(_access_symptom(clause) for clause, _ in _reported_clauses(messages))
+
+
+_INDIVIDUAL_ACCESS_SCOPE = re.compile(
+    r"\b(?:only\s+(?:i|me|my\s+(?:account|device|login|session))|"
+    r"i(?:\s+am|['’]m)\s+the\s+only\s+(?:one|person|user))\b"
+    rf"|\b(?:everyone\s+else|(?:the\s+)?rest\s+of\s+(?:my|our|the)\s+team)\s+can\s+{_ACCESS_VERB}\b",
+    re.IGNORECASE,
+)
+_AWAITING_OTHER_REPORTS = re.compile(
+    r"\bi\s+(?:have\s+not|had\s+not|haven['’]t|hadn['’]t|did\s+not|didn['’]t)\s+"
+    r"(?:yet\s+)?(?:heard|hear)\s+(?:back\s+)?from\s+"
+    r"(?:(?:the\s+)?rest\s+of\s+)?(?:(?:my|our|the)\s+)?(?:team(?:mates)?|coworkers|colleagues|others)\b",
+    re.IGNORECASE,
+)
+_ADDITIONAL_AFFECTED_REPORT = (
+    r"\b(?:teammates|coworkers|colleagues|users|employees|staff)\b"
+    r"(?:(?!\b(?:not|never)\b)[^.!?;]){0,120}"
+    r"\b(?:same|identical)\s+(?:error|issue|problem|symptom|failure)\b"
+)
+
+
+def _individual_access_scope(messages: list[str]) -> bool:
+    clauses = [clause for clause, delimiter in _reported_clauses(messages) if delimiter != "?"]
+    if any(_affirmed_pattern(clause, _ADDITIONAL_AFFECTED_REPORT) for clause in clauses):
+        return False
+    if any(_affirmed_pattern(clause, _INDIVIDUAL_ACCESS_SCOPE.pattern, negation=_IMPACT_REPORT_NEGATION)
+           for clause in clauses):
+        return True
+    first_person_failure = any(
+        re.match(r"^\s*(?:I|my)\b", clause, re.IGNORECASE) and _access_symptom(clause)
+        for clause in clauses
+    )
+    return first_person_failure and any(_AWAITING_OTHER_REPORTS.search(clause) for clause in clauses)
 
 
 def reports_dark_mode_scheduling(ticket: Ticket) -> bool:
@@ -409,15 +459,39 @@ def _first_report(clause: str, patterns: tuple[str, ...]) -> re.Match[str] | Non
     return next((match for pattern in patterns if (match := _affirmed_match(clause, pattern))), None)
 
 
-def _report_regions(clause: str, matched_report: str) -> set[str]:
+def _location_key(name: str) -> str:
+    name = re.sub(r"^(?:the|our|my)\s+", "", name.casefold())
+    return re.sub(rf"\s+{_LOCATION_QUALIFIER}$", "", name)
+
+
+def _report_regions(clause: str, matched_report: str, known: set[str]) -> set[str]:
     names = (
         _EXPLICIT_SCOPE.findall(matched_report)
+        or _THAI_NAMED_SCOPE.findall(matched_report)
         or _LEADING_SCOPE.findall(clause)
         or _SCOPE_HEADING.findall(clause)
         or _EXPLICIT_SCOPE.findall(clause)
+        or _THAI_NAMED_SCOPE.findall(clause)
         or re.findall(_REGION_NAME, clause, re.IGNORECASE)
     )
-    return {_REGION_NAMES.get(name.casefold(), name.title()) for name in names}
+    reported = set()
+    for name in names:
+        if name in {"เรา", "ของเรา"}:
+            continue
+        region = _REGION_NAMES.get(name.casefold(), name.title())
+        aliases = [previous for previous in known if _location_key(previous) == _location_key(region)]
+        reported.add(aliases[0] if region not in known and len(aliases) == 1 else region)
+    return reported
+
+
+def _known_location_subject(clause: str, known: set[str]) -> tuple[str, str] | None:
+    matches = []
+    for name in known:
+        labels = "|".join(re.escape(label) for label in {name, _location_key(name)})
+        subject = rf"^\s*(?:(?:the|our|my)\s+)?(?:{labels})(?:\s+{_LOCATION_QUALIFIER})?"
+        if re.match(subject + r"\s+", clause, re.IGNORECASE):
+            matches.append((name, subject))
+    return matches[0] if len(matches) == 1 else None
 
 
 def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
@@ -425,17 +499,15 @@ def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
     recovered: set[str | None] = set()
     symptom_reported = False
     for clause, delimiter in _reported_clauses(messages):
-        # Accept a bare place name as a subject only after a location was already reported.
-        location = next((
-            name for name in sorted((unresolved | recovered) - {None})
-            if re.match(rf"^\s*{re.escape(name)}\s+", clause, re.IGNORECASE)
-        ), None)
+        known = {name for name in unresolved | recovered if name is not None}
+        # A bare place name can identify a status update if it resolves to one reported location.
+        location = _known_location_subject(clause, known)
         recovery = _first_report(clause, _RECOVERY_PATTERNS)
         named_recovery = location and _affirmed_pattern(
-            clause, re.escape(location) + rf"(?:{_SITE_RESTORED}|\s+(?:users|staff|employees)\b{_ACCESS_RESTORED})",
+            clause, location[1] + rf"(?:{_SITE_RESTORED}|(?:\s+(?:users|staff|employees)\b)?{_ACCESS_RESTORED})",
         )
         if delimiter != "?" and (recovery or named_recovery):
-            regions = {location} if named_recovery else _report_regions(clause, recovery[0])
+            regions = {location[0]} if named_recovery else _report_regions(clause, recovery[0], known)
             if (unresolved or recovered) and len(regions) <= 1 and (regions or None in unresolved):
                 region = next(iter(regions), None)
                 recovered.add(region)
@@ -454,11 +526,11 @@ def _multi_user_outage(messages: list[str]) -> _OutageEvidence | None:
         if not scopes and symptom_in_clause:
             scopes = _affirmed_match(clause, _AFFECTED_GROUP)
         if scopes:
-            regions = _report_regions(clause, scopes[0]) or {None}
+            regions = _report_regions(clause, scopes[0], known) or {None}
         elif location and _affirmed_pattern(
-            clause, rf"{re.escape(location)}\s+(?:is\s+)?(?:still\s+)?(?:blocked|down|offline)\s+for\s+{_MULTI_USER}",
+            clause, location[1] + rf"\s+(?:is\s+)?(?:still\s+)?(?:blocked|down|offline)\s+for\s+{_MULTI_USER}",
         ):
-            regions = {location}
+            regions = {location[0]}
         else:
             continue
         unresolved.update(regions)
@@ -629,15 +701,30 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
             data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"],
                 "Scheduled dark-mode support is unverified"]))
     elif _access_problem(messages):
-        if (data["urgency"], data["action"], data["assigned_team"]) != ("medium", "route_to_specialist", "Technical Support"):
-            changes.append("access_issue_without_confirmed_wide_impact_routes_to_technical_support")
-        data["urgency"] = "medium"
-        data["action"] = "route_to_specialist"
-        data["assigned_team"] = "Technical Support"
-        data["draft_response"] = (
-            "Thank you for reporting this issue. A support specialist will review the "
-            "failure; its cause and resolution have not been confirmed."
-        )
+        if RANK[data["urgency"]] < RANK["high"] or _individual_access_scope(messages):
+            if (data["urgency"], data["action"], data["assigned_team"]) != ("medium", "route_to_specialist", "Technical Support"):
+                changes.append("access_issue_routes_to_technical_support")
+            data["urgency"] = "medium"
+            data["action"] = "route_to_specialist"
+            data["assigned_team"] = "Technical Support"
+            data["draft_response"] = (
+                "Thank you for reporting this issue. A support specialist will review the "
+                "failure; its cause and resolution have not been confirmed."
+            )
+        else:
+            # An inconclusive parser match does not justify downgrading a high-risk proposal.
+            if data["action"] == "escalate_to_human" or data["urgency"] == "critical":
+                data["action"] = "escalate_to_human"
+                data["assigned_team"] = "Infrastructure / On-call"
+                followup = "We are escalating this access report to our incident team for investigation."
+            else:
+                if data["action"] == "auto_respond":
+                    data["action"] = "route_to_specialist"
+                    data["assigned_team"] = "Technical Support"
+                followup = "A support specialist will investigate this access report."
+            data["draft_response"] = f"{followup} The number of affected users and regional scope are unconfirmed."
+            data["uncertainties"] = list(dict.fromkeys([*data["uncertainties"], "Access impact scope unconfirmed"]))
+            changes.append("access_urgency_retained_with_unconfirmed_scope")
     elif _payment_failure(ticket):
         old = data["urgency"]
         data["urgency"] = _floor_urgency(old, "medium")
