@@ -437,9 +437,19 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
     grounded = list(dict.fromkeys(k for k in data["kb_article_ids"] if k in valid))
     if grounded != data["kb_article_ids"]:
         changes.append("unverified_kb_article_ids_removed")
-    if "KB-003" in grounded and not any(_affirmed_pattern(message.text, _APPEARANCE_TOPIC) for message in ticket.messages):
-        grounded.remove("KB-003")
-        changes.append("irrelevant_appearance_faq_removed")
+    if "KB-003" in data["kb_article_ids"] and not any(
+        _affirmed_pattern(message.text, _APPEARANCE_TOPIC) for message in ticket.messages
+    ):
+        if "KB-003" in grounded:
+            grounded.remove("KB-003")
+            changes.append("irrelevant_appearance_faq_removed")
+        # Handoffs can retain model text, so dropping the article alone leaves its advice in the draft.
+        if data["action"] != "auto_respond":
+            data["draft_response"] = (
+                "Thanks for reaching out. Our support team will review your question "
+                "and help you find the right guidance."
+            )
+            changes.append("handoff_draft_replaced_after_appearance_faq_rejection")
     data["kb_article_ids"] = grounded
 
     outage, billing, dark_bug = risk_signals(ticket)

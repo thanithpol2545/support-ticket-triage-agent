@@ -264,6 +264,53 @@ def test_audit_p11a_removes_unrelated_appearance_guidance(query, citations, acti
     assert "appearance" not in final["draft_response"].lower()
 
 
+@pytest.mark.parametrize(
+    "action,team,query,retrieved",
+    [
+        ("route_to_specialist", "Technical Support", "settings", True),
+        ("escalate_to_human", "Support Escalation", "settings", True),
+        ("route_to_specialist", "Technical Support", "notification preferences", False),
+    ],
+    ids=["specialist", "escalation", "unretrieved-citation"],
+)
+def test_audit_p11a_replaces_handoff_draft_that_cites_appearance(action, team, query, retrieved, run_audit):
+    proposal_draft = "Open Settings > Appearance."
+    audit = run_audit(
+        ticket_for(PAIRS["P11"], "A"), query=query, action=action, assigned_team=team,
+        kb_article_ids=["KB-003"], draft_response=proposal_draft,
+    )
+
+    assert audit["proposal"]["draft_response"] == proposal_draft
+    assert audit["proposal"]["kb_article_ids"] == ["KB-003"]
+    final = audit["result"]
+    search = final["tool_trace"][1]
+    assert search["ok"]
+    assert ("KB-003" in [article["id"] for article in search["result"]["articles"]]) is retrieved
+    assert (final["action"], final["assigned_team"]) == (action, team)
+    assert final["kb_article_ids"] == []
+    assert "appearance" not in final["draft_response"].lower()
+    assert "review your question" in final["draft_response"].lower()
+    assert "handoff_draft_replaced_after_appearance_faq_rejection" in final["policy_overrides"]
+
+
+@pytest.mark.parametrize("action,team", [("route_to_specialist", "Product Support"), ("auto_respond", None)])
+def test_audit_p11b_keeps_relevant_appearance_guidance(action, team, run_audit):
+    proposal_draft = "Open Settings > Appearance."
+    audit = run_audit(
+        ticket_for(PAIRS["P11"], "B"), query="settings", action=action, assigned_team=team,
+        kb_article_ids=["KB-003"], draft_response=proposal_draft,
+    )
+
+    final = audit["result"]
+    assert (final["action"], final["assigned_team"]) == (action, team)
+    assert final["kb_article_ids"] == ["KB-003"]
+    if action == "auto_respond":
+        assert "Settings > Appearance" in final["draft_response"]
+        assert "auto_response_replaced_with_approved_faq_template" in final["policy_overrides"]
+    else:
+        assert final["draft_response"] == proposal_draft
+
+
 @pytest.mark.parametrize("case_id", ["P01A", "P01B", "P02A", "P02B", "P03A", "P03B", "P08A", "P08B"])
 def test_paired_regression_through_cli(case_id, mock_openai, tmp_path, capsys):
     pair = PAIRS[case_id[:-1]]

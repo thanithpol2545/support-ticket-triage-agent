@@ -4,7 +4,7 @@
 
 **Authenticated OpenAI รันสำเร็จบน `b66052be7478071148bee0ea793abf6052525e2e`** วันที่ 20 พฤศจิกายน 2026 เวลาไทย CLI `--audit` ส่ง 46 tickets ผ่าน OpenAI Responses API โดยตั้ง `gpt-4.1-mini` และได้ `gpt-4.1-mini-2025-04-14` ครบทุกเคส รวม 3 ticket ต้นฉบับ, 9 edge fixtures, 20 paired tickets และ 14 BANKING77 tickets ทั้ง 46 เคสใช้ `get_customer_history` และ `search_knowledge_base` สำเร็จ เครื่องมือและข้อมูลลูกค้าใช้ fixture ของโครงการ
 
-**แพตช์หลัง live ผ่าน 224 tests** บน Python 3.11 รวม 7 เคสจาก live baseline และ 1 สำนวนอิสระที่ใช้ proposal กับลำดับ tool calls เดิมผ่าน CLI `--audit` ด้วย Responses API จำลอง ยังไม่มี authenticated run บนแพตช์หลังแก้ จึงใช้ `NOT VERIFIED` สำหรับผล live ของแพตช์นี้
+**Offline ล่าสุดผ่าน 229 tests** บน Python 3.11 รวม regression ของ P11 รอบนี้ ส่วนแพตช์ P05/P07 ที่ `6a93e0c` ผ่าน 224 tests รวม 7 เคสจาก live baseline และ 1 สำนวนอิสระที่ใช้ proposal กับลำดับ tool calls เดิมผ่าน CLI `--audit` ด้วย Responses API จำลอง Authenticated run ของแพตช์ล่าสุดยังเป็น `NOT VERIFIED`
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
@@ -130,7 +130,17 @@ Research ให้คะแนน P04–P07 ตาม `paired-p04-p07-v1` คร
 | P11A | ช่วยชี้หน้า settings ของการแจ้งเตือนหน่อยครับ | ไม่มี FAQ ตรงหัวข้อ | KB-003 จากคำว่า `settings` |
 | P11B | ช่วยชี้หน้า settings ของโหมดมืดหน่อยครับ | KB-003 | KB-003 |
 
-`hit@3` เท่ากับ **3/5** จากข้อความลูกค้าตรง ๆ และ **4/5** จากคำค้นที่ GPT สร้างใน live baseline สำหรับเคสที่มี FAQ กำกับ P11A ยังได้ `KB-003` ผิดหัวข้อและไม่นับในตัวส่วน Live จบด้วยการส่งต่อและถอดคำแนะนำ Appearance ใน CLI จำลอง ทั้ง `settings` และ `settings help` ถอด citation และคำแนะนำ Appearance ออกจากผลสุดท้าย เส้นทางแรกส่งต่อ ส่วนเส้นทางที่มี `KB-004` ใช้ FAQ ขอรายละเอียดทั่วไป
+`hit@3` เท่ากับ **3/5** จากข้อความลูกค้าตรง ๆ และ **4/5** จากคำค้นที่ GPT สร้างใน live baseline สำหรับเคสที่มี FAQ กำกับ P11A ยังได้ `KB-003` ผิดหัวข้อและไม่นับในตัวส่วน Live baseline จบด้วยการส่งต่อและถอดคำแนะนำ Appearance
+
+### Regression ของ P11 ผ่าน CLI `--audit` จำลอง
+
+| ข้อเสนอและหลักฐาน | ก่อนแก้บน `6a93e0c` | หลังแก้ |
+|---|---|---|
+| P11A ถามเรื่องการแจ้งเตือน โมเดลเสนอส่ง specialist หรือ human escalation ตั้งแต่แรก อ้าง `KB-003` และร่าง `Open Settings > Appearance.` | ตัด citation แล้ว แต่ร่างยังชี้ไป Appearance ทั้งเมื่อการค้นคืน `KB-003` และเมื่อโมเดลอ้างบทความที่ค้นไม่เจอ | ตัด citation กับร่างที่อิงบทความนั้น ใช้ร่างแจ้งว่าจะตรวจคำถาม พร้อมคง action และทีมเดิม |
+| P11A โมเดลเสนอ `auto_respond` | คำค้น `settings` ส่งต่อเมื่อไม่มี FAQ ที่ใช้ได้ ส่วน `settings help` ใช้ `KB-004` ขอรายละเอียด | คงทั้งสองเส้นทาง ร่างสุดท้ายไม่มีคำแนะนำ Appearance |
+| P11B ถามเรื่องโหมดมืดและค้นเจอ `KB-003` | ร่างส่งต่อเก็บคำแนะนำ Appearance ส่วนทางตอบอัตโนมัติใช้ข้อความ FAQ ที่อนุมัติ | คงคำแนะนำและ citation ทั้งสองเส้นทาง |
+
+รัน `python -m pytest -q tests/test_paired_regression.py -k p11` ด้วยเทสต์ชุดเดียวกันได้ **3 ตก / 4 ผ่าน** ก่อนแก้และ **7/7** หลังแก้ การทดสอบตรวจทั้งร่างสุดท้าย citation และ routing ส่วน retrieval ยังใช้ชุดเดิม [เทสต์ P11](../tests/test_paired_regression.py)
 
 ## 4. BANKING77 pilot
 
