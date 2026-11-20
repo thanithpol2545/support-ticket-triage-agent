@@ -4,7 +4,7 @@
 
 **Authenticated OpenAI รันสำเร็จบน `b66052be7478071148bee0ea793abf6052525e2e`** วันที่ 20 พฤศจิกายน 2026 เวลาไทย CLI `--audit` ส่ง 46 tickets ผ่าน OpenAI Responses API โดยตั้ง `gpt-4.1-mini` และได้ `gpt-4.1-mini-2025-04-14` ครบทุกเคส รวม 3 ticket ต้นฉบับ, 9 edge fixtures, 20 paired tickets และ 14 BANKING77 tickets ทั้ง 46 เคสใช้ `get_customer_history` และ `search_knowledge_base` สำเร็จ เครื่องมือและข้อมูลลูกค้าใช้ fixture ของโครงการ
 
-**แพตช์หลัง live ผ่าน 223 tests** บน Python 3.11 รวม 7 เคสที่ replay proposal กับลำดับ tool calls จาก live baseline ผ่าน CLI `--audit` ด้วย Responses API จำลอง ยังไม่มี authenticated run บนแพตช์หลังแก้ จึงใช้ `NOT VERIFIED` สำหรับผล live ของแพตช์นี้
+**แพตช์หลัง live ผ่าน 224 tests** บน Python 3.11 รวม 7 เคสจาก live baseline และ 1 สำนวนอิสระที่ใช้ proposal กับลำดับ tool calls เดิมผ่าน CLI `--audit` ด้วย Responses API จำลอง ยังไม่มี authenticated run บนแพตช์หลังแก้ จึงใช้ `NOT VERIFIED` สำหรับผล live ของแพตช์นี้
 
 ## 1. สาม ticket ต้นฉบับของ OOCA
 
@@ -115,7 +115,9 @@ P01A เคยถูกยกระดับเป็น `critical / escalate_to
 | P07A | คำถามวิธีตั้ง System Default ได้ `low / auto_respond` จาก FAQ `KB-003` | คง routing และ FAQ เดิม |
 | P07B | GPT สรุปได้ว่าเลือก System Default แล้วแอปยังแสดงธีมสว่าง ผลสุดท้ายเป็น `low / auto_respond` จาก FAQ | `medium / route_to_specialist / Product Support` ร่างให้ทีมตรวจบั๊กและคงรายละเอียดการทำซ้ำใน summary |
 
-เทสต์ replay ผ่าน entry point ของ CLI `--audit` โดยใช้ proposal และชื่อเครื่องมือกับ arguments ที่คัดจาก baseline และให้ registry ทำงานกับ fixtures เดิม ตรวจว่า proposal และลำดับ tool calls ตรงกับที่บันทึกไว้ ชุดเดียวกันบน Policy `b66052b` ตก **3** และผ่าน **4** หลังแก้ผ่าน **7/7** ครอบคลุม P05A, P05B, P07A, P07B และสาม ticket ต้นฉบับ ไฟล์ replay ตัด customer IDs จาก tool arguments และไม่เก็บ tool payload ดิบ [เทสต์และวิธี replay](../tests/test_live_policy_replay.py) · [fixture](../tests/fixtures/live_policy_replay.json)
+Research ให้คะแนน P04–P07 ตาม `paired-p04-p07-v1` ครบ **18/18** ข้อหลังตัด `pending` ออกจากตัวส่วน ผล authenticated บน `b66052b` ได้ **10/18** เทียบกับ **14/18** จาก offline replay บนแพตช์รอบแรก `5bcc9be` ข้อที่ยังตกคือ urgency ของ P04A, summary และ routing ของ P04B และการรับทราบการถอนข้อโต้แย้งของ P06B
+
+เทสต์ replay ผ่าน entry point ของ CLI `--audit` โดยใช้ proposal และชื่อเครื่องมือกับ arguments ที่คัดจาก baseline และให้ registry ทำงานกับ fixtures เดิม ตรวจว่า proposal และ tool calls ตรงกับที่บันทึกไว้ ชุดเจ็ดเคสจาก baseline ใช้ Policy `b66052b` แล้วตก **3** และผ่าน **4** เมื่อ Research ล็อกสำนวน `the app still renders the light theme` พบว่า `5bcc9be` ยังตอบ FAQ เทสต์ที่เพิ่มสำนวนนี้จึงตก **1** และผ่าน **7** บน `5bcc9be` หลังแก้ผ่าน **8/8** ส่วน Policy `b66052b` ตก **4** และผ่าน **4** เมื่อใช้ชุดแปดเคส ไฟล์ replay ตัด customer IDs จาก tool arguments และไม่เก็บ tool payload ดิบ [เทสต์และวิธี replay](../tests/test_live_policy_replay.py) · [fixture](../tests/fixtures/live_policy_replay.json)
 
 ### Retrieval probes จากข้อความลูกค้าตรง ๆ
 
@@ -163,7 +165,7 @@ python -m evaluation.paired probe
 
 `verify` ดาวน์โหลดจาก revision ที่ล็อกไว้ ใช้ `--source <test.csv>` ถ้ามีไฟล์ต้นทางอยู่แล้ว ใช้ `--output <regenerated.json>` เพื่อบันทึก snapshot ที่สร้างซ้ำหลังตรวจว่าตรงกัน คำสั่ง PowerShell ด้านล่างโหลด Policy ของ `c28a22d` แล้ว replay เทสต์ล่าสุดเพื่อได้ผล **2 ตก / 61 ผ่าน** สำหรับแถวก่อนหน้าให้ใช้ชุดเทสต์บน SHA ในคอลัมน์หลังแก้และตั้ง `revision` เป็น SHA ในคอลัมน์ก่อนแก้ ส่วนผลก่อนแก้รอบแรกของ P01–P03, P08 และ P12 ใช้ `aacbe28bc92b352ee59e1bcff76b7013844386ba` และเลือก `-k "not audit"`
 
-สำหรับเทสต์ที่ใช้ proposal จาก authenticated baseline เปลี่ยน `revision` เป็น `b66052be7478071148bee0ea793abf6052525e2e` และใช้ `pytest.main(["-q", "tests/test_live_policy_replay.py"])` ในบรรทัดสุดท้าย จะได้ **3 ตก / 4 ผ่าน** โดยไม่เรียก API ซ้ำ
+สำหรับเทสต์ที่ใช้ proposal จาก authenticated baseline เปลี่ยน `revision` เป็น `b66052be7478071148bee0ea793abf6052525e2e` และใช้ `pytest.main(["-q", "tests/test_live_policy_replay.py"])` ในบรรทัดสุดท้าย จะได้ **4 ตก / 4 ผ่าน** ใช้ `5bcc9be18ef24c7a59f1502d9df7812fedb5f01c` เพื่อเทียบกับแพตช์รอบแรกและได้ **1 ตก / 7 ผ่าน** ทั้งสองคำสั่งทำงาน offline
 
 ```powershell
 @'

@@ -5,6 +5,7 @@ import pytest
 
 from evaluation.paired import load_pairs, ticket_for
 from triage_agent.cli import main
+from triage_agent.models import Message
 
 
 REPLAY = json.loads(Path(__file__).with_name("fixtures").joinpath("live_policy_replay.json").read_text(encoding="utf-8"))
@@ -13,8 +14,10 @@ PAIRS = {pair["id"]: pair for pair in load_pairs()}
 
 @pytest.fixture
 def replay(tickets, mock_openai, tmp_path, capsys):
-    def run(ticket_id):
+    def run(ticket_id, message=None):
         ticket = tickets[ticket_id] if ticket_id in tickets else ticket_for(PAIRS[ticket_id[:-1]], ticket_id[-1])
+        if message is not None:
+            ticket.messages = [Message(when="1", text=message)]
         source = tmp_path / "ticket.json"
         source.write_text(ticket.model_dump_json(), encoding="utf-8")
         case = REPLAY["cases"][ticket_id]
@@ -59,8 +62,13 @@ def test_statement_audit_preserves_reported_charges_and_billing_route(replay):
     assert "payment_attempts_distinguished_from_charges" not in result["policy_overrides"]
 
 
-def test_appearance_defect_audit_routes_to_product(replay):
-    result = replay("P07B")
+@pytest.mark.parametrize(
+    "message",
+    [None, "I selected System Default for dark mode, but the app still renders the light theme."],
+    ids=["live-ticket", "independent-wording"],
+)
+def test_appearance_defect_audit_routes_to_product(message, replay):
+    result = replay("P07B", message=message)
     assert (result["urgency"], result["action"], result["assigned_team"]) == (
         "medium", "route_to_specialist", "Product Support",
     )

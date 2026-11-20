@@ -85,7 +85,9 @@ _SCOPED_FOLLOWUP = (
 )
 _AFFECTED_GROUP = _MULTI_USER + _GROUP_REPORT_WORDS + r"\baffected\s*$"
 _DARK_DEFECT = re.compile(
-    r"(?:still\s+(?:(?:shows?|stays?|remains?)\s+)?|(?:stays?|remains?|stuck)\s+)(?:(?:in|on)\s+)?light\b"
+    r"(?:(?:still|continues?\s+to)\s+(?:(?:show|render|display|use|stay|remain)s?\s+)?"
+    r"|keeps?\s+(?:showing|rendering|displaying|using)\s+|(?:stays?|remains?|stuck)\s+)"
+    r"(?:(?:in|on)\s+)?(?:the\s+)?light\b"
     r"|not\s+working|doesn't\s+work|bug|ไม่ทำงาน|ยัง(?:คง)?\s*(?:แสดง|ใช้|เป็น)?\s*(?:ธีม|โหมด)สว่าง",
     re.IGNORECASE,
 )
