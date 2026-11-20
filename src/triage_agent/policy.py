@@ -75,14 +75,15 @@ _GROUP_REPORT_WORDS = (
     r"reported|report|reports|has|have|having|the|same|hit|affected|blocked|by|with|"
     r"experienc(?:e|es|ing))\s+){0,6}(?:\s|ก็|ยัง|คง|ต่าง){0,12}"
 )
-_THAI_SCOPE_NAME = (
-    r"(?:(?!กับ|และ|ทั้งสอง|ทุกคน|พนักงาน|ยัง|กลับ|เข้า|ล็อ[กค]อิน|ใช้งาน|ขึ้น|เจอ|พบ|ก็)[ก-๙]){1,26}"
-)
+_THAI_STATUS_CUE = r"(?:ยัง|กลับ|เข้า|ล็อ[กค]อิน|ใช้งาน|ขึ้น|เจอ|พบ)"
+# The particle is a delimiter only when it introduces a status predicate.
+_THAI_SCOPE_BOUNDARY = rf"(?:กับ|และ|ทั้งสอง|ทุกคน|พนักงาน|{_THAI_STATUS_CUE}|ก็(?=\s*{_THAI_STATUS_CUE}))"
+_THAI_SCOPE_NAME = rf"(?:(?!{_THAI_SCOPE_BOUNDARY})[ก-๙]){{1,26}}"
 _THAI_GROUP_LABEL = r"(?:ทีม|สาขา|สำนักงาน|ออฟฟิศ)(?:ที่|ใน)?"
 _THAI_SITED_GROUP = rf"{_THAI_GROUP_LABEL}\s*{_THAI_SCOPE_NAME}"
 _THAI_NAMED_SCOPE = re.compile(
     rf"(?:{_THAI_GROUP_LABEL}|^\s*ที่)\s*({_THAI_SCOPE_NAME})"
-    r"(?=\s*(?:กับ|และ|ทั้งสอง|ทุกคน|พนักงาน|ยัง|กลับ|เข้า|ล็อ[กค]อิน|ใช้งาน|ขึ้น|เจอ|พบ|ก็))"
+    rf"(?=\s*{_THAI_SCOPE_BOUNDARY})"
 )
 _THAI_GROUP_LOCATION = (
     r"(?:(?:ใน(?:ทีม|สาขา|สำนักงาน|ออฟฟิศ|ภูมิภาค)|ที่)"
@@ -298,6 +299,31 @@ _STATEMENT_ENTRIES = (
     rf"(?:ของ[ก-๙a-z ]{{1,24}}?)?\s*{_REPEATED_COUNT}\s*(?:บรรทัด|รายการ)"
 )
 
+
+_PENDING_BANK_ENTRY = (
+    r"\b(?:bank|card)\s+(?:app|statement|account)\s+(?:shows?|lists?|displays?|reports?)\s+"
+    r"(?:(?:only|just)\s+)?(?:(?:a|an|one|the|\d+)\s+)?"
+    r"pending\s+(?:authori[sz]ation|transaction|charge|payment)\b"
+    r"|(?:แอปธนาคาร|บัญชีธนาคาร|ใบแจ้งยอด)\s*(?:แสดง|ขึ้น|มี)\s*"
+    r"(?:รายการ\s*(?:pending|รอดำเนินการ)|ยอดกันวงเงิน)"
+)
+_REFUND_APPROVAL_EMAIL = (
+    r"\be-?mail\s+(?:that\s+)?(?:says?|said|saying|confirm(?:s|ed|ing)?|stat(?:es|ed|ing))\s+"
+    r"(?:that\s+)?(?:(?:my|our|the)\s+)?refund(?:\s+request)?\s+(?:(?:was|is|has\s+been)\s+)?approved\b"
+    r"|\brefund\s+approval\s+e-?mail\b"
+    r"|อีเมล\s*(?:แจ้ง|ระบุ|ยืนยัน)(?:มา)?(?:ว่า)?\s*(?:อนุมัติ(?:การ)?คืนเงิน|คืนเงิน(?:ได้รับ)?อนุมัติแล้ว)"
+)
+_REFUND_CREDIT_MISSING = (
+    r"\b(?:cannot|can['’]t|do\s+not|don['’]t|haven['’]t|have\s+not)\s+(?:yet\s+)?"
+    r"(?:see|received?)\s+(?:(?:the|a|any|my)\s+)?(?:credit|refund|funds|money)\b"
+    r"|\b(?:refund|credit)\s+(?:has\s+not|hasn['’]t)\s+(?:appeared|arrived|posted)\b"
+    r"|(?:ยังไม่(?:เห็น|ได้รับ)|ไม่พบ)\s*(?:ยอด(?:เงิน)?คืน|เงินคืน|ยอดโอนคืน)"
+)
+_REFUND_CREDIT_VISIBLE = (
+    r"\b(?:see|received)\s+(?:the|my)\s+(?:credit|refund|funds)\b"
+    r"|\b(?:refund|credit)\s+(?:(?:has|now)\s+)?(?:appeared|arrived|posted)\b"
+    r"|(?:เห็นยอดเงินคืน|ได้รับเงินคืน|เงินคืนเข้า)(?:แล้ว|เรียบร้อย)"
+)
 
 _REFUND_POSITION_NEGATION = re.compile(
     rf"{_NEGATION.pattern}|\b(?:don|didn|doesn)['’]t\b[\w\s'’-]{{0,24}}$", re.IGNORECASE,
@@ -587,6 +613,30 @@ def _unsafe_password_reference(draft: str) -> bool:
     )
 
 
+def _unverified_bank_status_draft(messages: list[str], tools: ToolRegistry) -> str | None:
+    if any(event.name == "check_billing_status" and event.ok and event.result.get("bank_side_verified") is True
+           for event in tools.trace):
+        return None
+
+    clauses = [clause for clause, delimiter in _reported_clauses(messages) if delimiter != "?"]
+    if any(_affirmed_pattern(clause, _REFUND_APPROVAL_EMAIL) for clause in clauses):
+        for clause in reversed(clauses):
+            if _affirmed_pattern(clause, _REFUND_CREDIT_MISSING):
+                return (
+                    "You reported receiving an email saying your refund was approved and that the credit "
+                    "has not appeared in your bank account. We cannot confirm a transfer or a timeline."
+                )
+            if _affirmed_pattern(clause, _REFUND_CREDIT_VISIBLE, negation=_REFUND_POSITION_NEGATION):
+                break
+
+    if any(_affirmed_pattern(clause, _PENDING_BANK_ENTRY) for clause in clauses):
+        return (
+            "You reported a pending authorization in your bank app or statement. "
+            "We have not verified whether the payment was captured. Support can review the payment status."
+        )
+    return None
+
+
 def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> TriageResult:
     data = proposal.model_dump()
     changes: list[str] = []
@@ -809,6 +859,12 @@ def finalize(ticket: Ticket, proposal: AgentProposal, tools: ToolRegistry) -> Tr
     if data["action"] != "auto_respond" and not data["assigned_team"]:
         changes.append("assigned_fallback_team")
         data["assigned_team"] = "General Support"
+
+    if data["action"] != "auto_respond" and not (outage or appeal or appearance or _access_problem(messages)):
+        bank_draft = _unverified_bank_status_draft(messages, tools)
+        if bank_draft is not None:
+            data["draft_response"] = bank_draft
+            changes.append("bank_status_draft_grounded_in_customer_report")
 
     if _unsafe_password_reference(data["draft_response"]):
         data["draft_response"] = "Thank you for contacting support. For your security, please do not share your password."

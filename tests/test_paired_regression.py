@@ -560,13 +560,25 @@ def test_audit_thai_denied_http_500_keeps_documentation_intent(run_audit):
     assert (final["urgency"], final["action"], final["kb_article_ids"]) == ("low", "auto_respond", ["KB-004"])
 
 
-def test_audit_thai_team_at_location_escalates_confirmed_impact(run_audit):
+@pytest.mark.parametrize(
+    "location,particle",
+    [
+        pytest.param("กระบี่", "", id="existing-location"),
+        pytest.param("ภูเก็ต", "", id="particle-inside-name"),
+        pytest.param("ภูเก็ต", "ก็", id="particle-after-name"),
+    ],
+)
+def test_audit_thai_team_at_location_escalates_confirmed_impact(location, particle, run_audit):
     ticket = ticket_for(PAIRS["P12"], "A")
-    ticket.messages = [Message(when="now", text="พนักงานทั้งทีมที่กระบี่ขึ้น HTTP 500 ตอนล็อกอิน ช่วยดูว่าเฉพาะทีมเราหรือเปล่า?")]
+    ticket.messages = [Message(
+        when="now",
+        text=f"พนักงานทั้งทีมที่{location}{particle}ขึ้น HTTP 500 ตอนล็อกอิน ช่วยดูว่าเฉพาะทีมเราหรือเปล่า?",
+    )]
     final = run_audit(ticket, query="HTTP 500", kb_article_ids=["KB-002"])["result"]
     assert (final["urgency"], final["action"], final["assigned_team"]) == (
         "critical", "escalate_to_human", "Infrastructure / On-call",
     )
+    assert f"users in {location} cannot access" in final["draft_response"]
     assert "regional scope" in final["draft_response"] and "pending confirmation" in final["draft_response"]
 
 
@@ -622,3 +634,77 @@ def test_audit_access_fallback_requires_evidence_before_downgrading(text, urgenc
         assert actual == (urgency, "escalate_to_human", "Infrastructure / On-call")
         assert "scope" in final["draft_response"].lower()
         assert "unconfirmed" in final["draft_response"].lower()
+
+
+@pytest.mark.parametrize(
+    "messages,urgency,action,draft,required,forbidden",
+    [
+        pytest.param(
+            ["อัปเกรดจาก Free ไป Pro ไม่ผ่าน ยังเห็นแผนเดิม", "แอปธนาคารแสดงรายการ pending รายการเดียว"],
+            "high", "escalate_to_human", "รายการนี้ยังไม่ได้เรียกเก็บเงินจริงแน่นอนค่ะ",
+            ["you reported a pending authorization", "not verified whether the payment was captured"],
+            ["ยังไม่ได้เรียกเก็บเงินจริง"], id="pending-authorization",
+        ),
+        pytest.param(
+            ["An email said my refund was approved.", "I checked my bank app and still can't see the credit."],
+            "medium", "route_to_specialist", "We transferred the refund. It will appear in a few business days.",
+            ["you reported receiving an email", "credit has not appeared", "cannot confirm a transfer or a timeline"],
+            ["we transferred", "few business days"], id="refund-email",
+        ),
+    ],
+)
+def test_audit_billing_draft_distinguishes_reported_status_from_bank_confirmation(
+    messages, urgency, action, draft, required, forbidden, run_audit,
+):
+    ticket = ticket_for(PAIRS["P05"], "A")
+    ticket.messages = [Message(when=str(i), text=message) for i, message in enumerate(messages)]
+    audit = run_audit(
+        ticket, urgency=urgency, action=action, assigned_team="Billing Support",
+        query="upgrade refund charges", kb_article_ids=["KB-001"], draft_response=draft,
+        optional_calls=[("check_billing_status", {"customer_id": ticket.customer.customer_id})],
+    )
+    assert audit["proposal"]["draft_response"] == draft
+    final = audit["result"]
+    assert (final["urgency"], final["action"], final["assigned_team"]) == (urgency, action, "Billing Support")
+    billing = final["tool_trace"][-1]
+    assert billing["ok"] and billing["result"]["bank_side_verified"] is False
+    for phrase in required:
+        assert phrase in final["draft_response"].lower()
+    for phrase in forbidden:
+        assert phrase not in final["draft_response"].lower()
+
+
+def test_audit_reported_bank_status_does_not_replace_active_outage_draft(run_audit):
+    ticket = ticket_for(PAIRS["P12"], "A")
+    ticket.messages = [
+        Message(when="1", text="All users in Europe get HTTP 500 at sign-in."),
+        Message(when="2", text="Separately, my bank app shows a pending authorization."),
+    ]
+    final = run_audit(
+        ticket, query="HTTP 500 billing", kb_article_ids=["KB-002"],
+        optional_calls=[("check_billing_status", {"customer_id": ticket.customer.customer_id})],
+    )["result"]
+
+    assert (final["urgency"], final["action"], final["assigned_team"]) == (
+        "critical", "escalate_to_human", "Infrastructure / On-call",
+    )
+    assert "users in Europe cannot access" in final["draft_response"]
+    assert "regional scope and recovery time are pending confirmation" in final["draft_response"]
+    assert "bank_status_draft_grounded_in_customer_report" not in final["policy_overrides"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "My bank app shows no pending authorization.",
+        "An email said no refund was approved. I still cannot see the credit.",
+    ],
+    ids=["no-pending-entry", "no-refund-approval"],
+)
+def test_audit_does_not_attribute_denied_billing_evidence(message, run_audit):
+    ticket = ticket_for(PAIRS["P05"], "A")
+    ticket.messages = [Message(when="now", text=message)]
+    draft = "Billing Support can check the status."
+    final = run_audit(ticket, urgency="medium", action="route_to_specialist", assigned_team="Billing Support",
+                      query="refund payment", kb_article_ids=["KB-001"], draft_response=draft)["result"]
+    assert final["draft_response"] == draft
